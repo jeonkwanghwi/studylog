@@ -5,11 +5,12 @@
 | 문서 | 내용 |
 |------|------|
 | [01-service-design.md](01-service-design.md) | 서비스 설계 — 확정된 결정, 하루의 흐름, 데이터 모델, 판정 파이프라인 |
-| [02-open-questions.md](02-open-questions.md) | 미결 안건 — 브레인스토밍 2부에서 다룰 것들 |
+| [02-open-questions.md](02-open-questions.md) | 2부 안건과 해소 결과 |
+| [구현 스펙](superpowers/specs/2026-09-09-studylog-v1-design.md) | **v1 구현 기준.** 스키마, 흐름, 판정 정책, 인프라 |
 
 ## 진행 상태
 
 - [x] 브레인스토밍 1부 — 제품 뼈대 확정
-- [ ] 브레인스토밍 2부 — 미결 안건 정리
-- [ ] 구현 스펙 작성
+- [x] 브레인스토밍 2부 — 미결 안건 정리
+- [x] 구현 스펙 작성
 - [ ] 구현 계획 작성

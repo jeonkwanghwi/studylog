@@ -1,7 +1,10 @@
 # StudyLog 서비스 설계
 
-- **상태**: 브레인스토밍 1부 완료 / 2부 미착수
-- **최종 갱신**: 2026-09-07
+- **상태**: 브레인스토밍 2부 완료
+- **최종 갱신**: 2026-09-09
+
+> v1 구현 기준은 [구현 스펙](superpowers/specs/2026-09-09-studylog-v1-design.md)이 최신이다.
+> 아래 결정 중 **6 · 7 · 11 · 16은 2부에서 변경**됐고, 이 문서에도 반영해 두었다.
 
 ## 1. 한 줄 정의
 
@@ -21,17 +24,17 @@
 | 3 | 결제 시점 | **묶음 선구매**(3개/10개), 소비는 자동 차감 | 실패할 때마다 결제창 태우면 마찰로 이탈. 결제 순간만 앞으로 당김 |
 | 4 | 인증 단위 | 목표 시간 + 시작/종료 샷 | 하루 1장 인증샷은 "1분 찍고 놀기"가 가능해 공부량 보장 안 됨 |
 | 5 | 타이머 | **서버 타임스탬프 뺄셈**. 클라이언트 타이머 없음 | 시작 샷 수신 시각 ~ 종료 샷 수신 시각. 백그라운드 유지·앱 종료 복구·시각 조작 방지 코드가 통째로 사라짐. 사진 두 장이 이미 AI 검증을 통과하므로 조작 여지도 더 적음 |
-| 6 | 세션 | 하루 여러 번 쪼개기 허용, 합산 | 세션당 상한 4시간, 미종료 세션은 4시간에서 자동 마감(종료 샷 깜빡 대응) |
-| 7 | 판정 권한 | AI 확신도 기반 하이브리드 | 확신도 높음 → 즉시 확정 / 애매한 구간 → 그룹 투표. 오판정 리스크를 사람에게 위임하되 귀찮음은 최소화 |
+| 6 | 세션 | 하루 여러 번 쪼개기 허용, 합산 | 세션당 상한 4시간. ~~미종료 세션은 4시간에서 자동 마감~~ → **2부에서 변경: 미종료 세션은 `counted_minutes = 0`, `abandoned`**. 시작 샷 1장으로 4시간이 적립되면 결정 4가 무력화된다. 대신 +3h30m에 경고 푸시 |
+| 7 | 판정 권한 | ~~AI + 그룹 투표 하이브리드~~ → **2부에서 변경: AI 단독 + 이의제기 재판정** | 유저가 사진 설명을 적어 이의제기하면 그 텍스트를 프롬프트에 넣어 **1회만** 재판정한다. 사람 개입이 사라지고, 설명 + 원래 verdict + 재판정 결과가 그대로 eval 데이터셋이 된다(결정 17) |
 | 8 | 실패 대가 | streak 소멸 + 피드 박제 | 자동 강퇴는 복귀 불가라 리텐션 자살골. 기능 잠금은 스토어 심사에서 다크패턴 소지 |
 | 9 | 목표 시간 | **개인별 설정** | 공통 목표는 고3/직장인이 한 그룹이면 직장인이 첫 주에 이탈 |
 | 10 | 그룹 역할 | 규칙 주체가 아니라 **관중석**(피드·랭킹·박제) | 유저가 직접 조정한 방향 |
-| 11 | 그룹 수 | 1인 1그룹 *(가정 — 미확인)* | 다중 그룹이면 streak·패스권·정산이 전부 그룹별로 갈라짐 |
+| 11 | 그룹 수 | ~~1인 1그룹~~ → **2부에서 확정: 다중 그룹** | 그룹별로 갈리는 것은 **피드뿐**이다. 목표·streak·패스권·정산은 유저 단위로 남으므로 판정·정산·결제 파이프라인은 그룹을 전혀 모른다. `users.group_id` → `memberships` |
 | 12 | 하루 경계 | **새벽 4시 KST** | 자정 기준이면 밤샘 공부가 억울해짐. 타임존 KST 고정(해외 유저 범위 밖) |
 | 13 | 정산 | 새벽 4시 배치로 전날 확정 | |
 | 14 | streak 복구 | failed 후 **24시간 내** 패스권 구매 시 기록 복구 | **핵심 매출 지점.** 연속 기록이 끊긴 직후가 지불의사 최고점. 미리 사두라는 권유는 안 팔림 |
 | 15 | 아키텍처 | 단일 서버(Lightsail/EC2 t4g.small) + RDS Postgres + S3 | 하루 인증 2~6회라 트래픽 사실상 없음. 월 $15~25 고정. 서버리스는 비동기 판정 파이프라인 + NoSQL 쿼리 설계가 붙어 "간단하게"와 역방향 |
-| 16 | AI 판정 모델 | **미정** | `JudgeProvider` 어댑터로 추상화, env로 교체. GPT·Gemini·Claude를 같은 프롬프트·같은 사진으로 직접 비교 후 결정 |
+| 16 | AI 판정 모델 | ~~미정~~ → **2부에서 확정: `claude-haiku-4-5`** | 단위경제학이 사실상 이것만 허용한다(§6). `JudgeProvider` 어댑터는 그대로 두고 env로 교체 가능. `verdicts`가 쌓이면 3사 비교로 재검토 |
 | 17 | 판정 로그 | 모든 verdict를 raw JSON까지 저장 | 사람의 투표·이의가 정답 라벨이 되어, 그대로 모델 비교용 eval 데이터셋이 됨 |
 
 ---
@@ -41,11 +44,14 @@
 ```
 [공부 시작] → 카메라 촬영 → 시작 샷 업로드 → AI 판정
                                   ├ pass  → 세션 open, 경과 시간 화면
-                                  ├ fail  → 재촬영 요구 (세션 시작 안 됨)
-                                  └ 애매  → 세션 open + 그룹 투표 대기
+                                  └ fail  → 재촬영 요구 (세션 시작 안 됨)
+                                             └ 반복 fail → 이의제기 → AI 재판정 1회
 
 [공부 종료] → 종료 샷 → AI 판정 → 세션 close
                                   counted_minutes = 종료시각 − 시작시각 (최대 4시간)
+                          fail  → 세션 open 유지, 재촬영 요구
+
+[종료 샷 없음] → 시작 +3h30m 경고 푸시 → +4h에 abandoned, counted_minutes = 0
 
 새벽 04:00 KST 정산 배치 → 전날 daily_record 확정
     total_minutes >= goal      → success,  streak +1
@@ -60,14 +66,16 @@
 
 | 테이블 | 주요 컬럼 |
 |--------|-----------|
-| `users` | `daily_goal_minutes`, `streak_count`, `pass_tickets`, `group_id` |
+| `users` | `daily_goal_minutes`, `streak_count`, `pass_tickets` |
 | `groups` | `invite_code`, `owner_id` |
-| `study_sessions` | `started_at`, `ended_at`, 시작/종료 사진 FK, `counted_minutes`, `status` |
-| `photos` | `s3_key`, `phash`, `exif_taken_at`, `uploaded_at`, `kind(start\|end)` |
-| `verdicts` | `photo_id`, **`provider`**, **`model`**, `decision`, `confidence`, `reason`, `raw_json` |
-| `daily_records` | `date`, `total_minutes`, `goal_minutes`, `result`, `pass_ticket_used` |
-| `votes` | 애매 판정에 대한 그룹원 투표 |
-| `purchases` | IAP 영수증, 검증 상태 |
+| `memberships` | `user_id`, `group_id` — 다중 그룹(결정 11) |
+| `study_sessions` | `started_at`, `ended_at`, 시작/종료 사진 FK, `counted_minutes`, `status(open\|closed\|abandoned)` |
+| `photos` | `s3_key`, `phash`, `exif_taken_at`, `received_at`, `kind(start\|end)`, `status` |
+| `verdicts` | `photo_id`, **`attempt(1\|2)`**, `appeal_text`, **`provider`**, **`model`**, `decision`, `confidence`, `reason`, `raw_json` |
+| `daily_records` | `date`, `total_minutes`, `goal_minutes`, `result`, `pass_tickets_used`, `streak_snapshot` |
+| `purchases` | RevenueCat 이벤트 ID, 지급 패스권 수 |
+
+`votes` 테이블은 결정 7 변경으로 사라졌다. 전체 스키마는 [구현 스펙 §3](superpowers/specs/2026-09-09-studylog-v1-design.md)에 있다.
 
 ---
 
@@ -85,11 +93,16 @@ JudgeProvider (인터페이스)
 프롬프트: 공통 텍스트 1개를 모든 프로바이더가 공유 (공정 비교 전제)
 ```
 
-확신도 임계값(초기값은 2부에서 확정):
+**v1 기본값: `claude-haiku-4-5`** (결정 16).
 
-- `confidence >= 상한` → 즉시 pass 확정
-- `confidence <= 하한` → 즉시 fail 확정
-- 그 사이 → 그룹 투표로 이관
+확신도 임계값 — 2부에서 **관대**로 확정했다. 임계는 하나뿐이다.
+
+- `decision == "fail"` **AND** `confidence >= 0.7` → fail
+- 그 외 전부 → pass
+
+즉 확신하는 fail만 거른다. 초기 최대 이탈 원인은 어뷰저가 아니라 "제대로 공부했는데
+fail 났다"이므로, 어뷰징 일부를 감수하고 정상 유저 오차단을 막는다. `0.7`은 env로
+조정하며 `verdicts`가 쌓이면 데이터로 다시 정한다. 판정 타임아웃 10초, 초과 시 pass.
 
 ---
 
