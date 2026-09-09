@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
+from app.domain import counted_minutes
 from app.judge.base import JudgeProvider, get_judge, is_pass, judge_photo
 from app.models import Photo, StudySession, User, Verdict
 from app.schemas import JudgeResultOut, SessionOut
@@ -90,3 +91,44 @@ def current_session(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> StudySession | None:
     return _open_session(db, user.id)
+
+
+@router.post("/sessions/{session_id}/end", response_model=JudgeResultOut)
+async def end_session(
+    session_id: str,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    storage: PhotoStorage = Depends(get_storage),
+    judge: JudgeProvider = Depends(get_judge),
+) -> JudgeResultOut:
+    received_at = now_utc()          # 타이머 기준은 요청이 도착한 시각이다
+    session = (db.query(StudySession)
+                 .filter_by(id=session_id, user_id=user.id, status="open")
+                 .one_or_none())
+    if session is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "진행 중인 세션이 아닙니다")
+
+    photo, ok = await ingest_photo(
+        db, user, "end", await image.read(), storage, judge, received_at
+    )
+    if ok:
+        close_session(session, photo)
+    db.commit()
+
+    return JudgeResultOut(
+        result="pass" if ok else "fail",
+        photo_id=photo.id,
+        reason=_last_reason(db, photo.id),
+        session=SessionOut.model_validate(session) if ok else None,
+    )
+
+
+def close_session(session: StudySession, end_photo: Photo) -> None:
+    """종료 샷이 통과했을 때 세션을 닫는다. 이의제기(Task 10)도 이걸 쓴다."""
+    session.end_photo_id = end_photo.id
+    session.ended_at = end_photo.received_at
+    session.counted_minutes = counted_minutes(
+        session.started_at, end_photo.received_at, settings.session_max_minutes
+    )
+    session.status = "closed"
