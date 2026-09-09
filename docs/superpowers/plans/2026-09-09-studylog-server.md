@@ -111,7 +111,18 @@ dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "asgi-lifespan>=2.1"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["."]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
 ```
+
+`pythonpath = ["."]`가 없으면 pytest는 `tests/`만 `sys.path`에 넣어서
+`import app`이 전부 실패한다.
 
 - [ ] **Step 2: 실패하는 테스트 작성**
 
@@ -389,6 +400,24 @@ def test_new_user_starts_with_zero_streak_and_tickets(db):
     assert user.pending_goal_minutes is None
 
 
+def test_datetimes_round_trip_as_utc_aware(db):
+    from datetime import UTC, datetime
+
+    user = User(provider="apple", provider_sub="sub-tz", nickname="시각")
+    db.add(user)
+    db.commit()
+
+    photo = Photo(user_id=user.id, kind="start", s3_key="k", status="pass",
+                  received_at=datetime(2026, 9, 9, 1, 30, tzinfo=UTC))
+    db.add(photo)
+    db.commit()
+    db.expire_all()
+
+    loaded = db.get(Photo, photo.id)
+    assert loaded.received_at.tzinfo is not None
+    assert loaded.received_at == datetime(2026, 9, 9, 1, 30, tzinfo=UTC)
+
+
 def test_a_photo_can_only_be_appealed_once(db):
     user = User(provider="apple", provider_sub="sub-3", nickname="라")
     db.add(user)
@@ -415,16 +444,23 @@ def test_a_photo_can_only_be_appealed_once(db):
 
 `server/tests/conftest.py`:
 
-**테스트는 SQLite가 아니라 Postgres로 돌린다.** SQLite는 `DateTime(timezone=True)`를
-naive로 되돌려주는데, 이 서버 로직의 절반이 시각 뺄셈이라 하필 가장 중요한 곳에서만
-거짓말을 하게 된다. `JSON`·`Date`·복합 unique 동작도 프로덕션과 같아진다.
+**테스트는 기본적으로 SQLite로 돌리고, `TEST_DATABASE_URL`을 주면 Postgres로 돌린다.**
 
-테스트 DB는 미리 띄워 둔다:
+SQLite의 유일한 위험은 `DateTime(timezone=True)`를 naive로 되돌려준다는 것인데,
+이 서버는 로직 절반이 시각 뺄셈이라 하필 가장 중요한 곳에서만 거짓말을 하게 된다.
+그래서 아래 Step 4의 `UTCDateTime`이 **저장할 때 UTC로 정규화하고 읽을 때 UTC를 다시
+붙인다.** 이러면 두 DB의 시각 동작이 같아지고, 프로덕션에서도 naive datetime이
+새어 들어오는 것을 막아준다.
+
+Postgres로 검증하려면 서버를 띄우고 URL만 준다:
 
 ```bash
 docker run -d --name studylog-test-db -p 5433:5432 \
   -e POSTGRES_USER=studylog -e POSTGRES_PASSWORD=studylog \
   -e POSTGRES_DB=studylog_test postgres:16
+
+TEST_DATABASE_URL=postgresql+psycopg://studylog:studylog@localhost:5433/studylog_test \
+  python -m pytest
 ```
 
 ```python
@@ -432,20 +468,28 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base, get_db
 from app.main import app
 
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql+psycopg://studylog:studylog@localhost:5433/studylog_test",
-)
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite://")
 
 
 @pytest.fixture(scope="session")
 def engine():
+    if TEST_DATABASE_URL.startswith("sqlite"):
+        eng = create_engine(TEST_DATABASE_URL,
+                            connect_args={"check_same_thread": False},
+                            poolclass=StaticPool)
+
+        @event.listens_for(eng, "connect")
+        def _fk_on(dbapi_conn, _):
+            dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+        return eng
     return create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
 
 
@@ -479,11 +523,11 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.models'`
 
 ```python
 import uuid
-from datetime import date as Date
+from datetime import UTC, date as Date
 from datetime import datetime
 
 from sqlalchemy import (JSON, Date as SADate, DateTime, Float, ForeignKey,
-                        Integer, String, Text, UniqueConstraint)
+                        Integer, String, Text, TypeDecorator, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -494,7 +538,30 @@ def _uuid() -> str:
     return str(uuid.uuid4())
 
 
-TS = DateTime(timezone=True)
+class UTCDateTime(TypeDecorator):
+    """모든 시각을 UTC aware로 통일한다.
+
+    SQLite는 tzinfo를 버리고, Postgres도 naive를 받으면 그대로 넣는다.
+    이 서버는 로직 절반이 시각 뺄셈이라 naive가 하나만 섞여도 TypeError가 난다.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("naive datetime은 저장할 수 없습니다")
+        return value.astimezone(UTC)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+TS = UTCDateTime()
 
 
 class User(Base):
@@ -604,7 +671,7 @@ class Purchase(Base):
 - [ ] **Step 5: 테스트 통과 확인**
 
 Run: `cd server && python -m pytest tests/test_models.py -v`
-Expected: PASS (3 passed)
+Expected: PASS (4 passed)
 
 - [ ] **Step 6: Alembic 초기화와 첫 마이그레이션**
 
@@ -639,6 +706,10 @@ unique 제약 3개(`users(provider, provider_sub)`, `groups.invite_code`,
 
 Run: `cd server && alembic upgrade head && alembic downgrade base && alembic upgrade head`
 Expected: 세 명령 모두 에러 없이 끝난다
+
+Postgres를 띄울 수 없는 환경이면 이 스텝은 **건너뛰고** 마이그레이션 파일을 눈으로만
+검증한다. `alembic revision --autogenerate`도 DB 연결이 필요하므로, 그 경우
+마이그레이션은 `Base.metadata`를 보고 손으로 쓴다 — 8개 테이블과 unique 제약 5개.
 
 - [ ] **Step 8: 커밋**
 
