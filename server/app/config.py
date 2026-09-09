@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://studylog:studylog@localhost:5432/studylog"
     jwt_secret: str = "dev-secret-change-me"
     jwt_days: int = 90
+    apple_bundle_id: str = "com.studylog.app"
+    google_client_id: str = ""
 
     # 스토리지
     s3_bucket: str = "studylog-photos"
