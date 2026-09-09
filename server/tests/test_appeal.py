@@ -102,6 +102,41 @@ def test_cannot_appeal_after_the_day_is_settled(client, auth, jpeg, db, judge):
     assert appeal(client, auth, photo_id).status_code == 409
 
 
+def test_appeal_on_a_start_shot_is_rejected_when_another_session_is_open(
+    client, auth, jpeg, db, judge
+):
+    """통과시켜도 반영할 데가 없다. AI를 부르기 전에 막아야 이의제기가 보존된다."""
+    judge.verdict = Verdict("fail", 0.95, "게임입니다.", {})
+    stale_photo_id = start(client, auth, jpeg)["photo_id"]
+
+    judge.verdict = Verdict("pass", 0.9, "책상입니다.", {})
+    start(client, auth, jpeg)                      # 다른 세션이 열린다
+
+    r = appeal(client, auth, stale_photo_id)
+    assert r.status_code == 409
+    assert db.query(VerdictRow).filter_by(photo_id=stale_photo_id, attempt=2).count() == 0
+    assert db.query(StudySession).count() == 1
+
+
+def test_appeal_on_an_end_shot_is_rejected_when_the_session_already_closed(
+    client, auth, jpeg, db, judge
+):
+    session_id = start(client, auth, jpeg)["session"]["id"]
+
+    judge.verdict = Verdict("fail", 0.95, "음식입니다.", {})
+    stale_end_id = client.post(f"/sessions/{session_id}/end", headers=auth,
+                               files={"image": ("e.jpg", jpeg, "image/jpeg")}
+                               ).json()["photo_id"]
+
+    judge.verdict = Verdict("pass", 0.9, "노트입니다.", {})
+    client.post(f"/sessions/{session_id}/end", headers=auth,
+                files={"image": ("e2.jpg", jpeg, "image/jpeg")})   # 세션이 닫힌다
+
+    r = appeal(client, auth, stale_end_id)
+    assert r.status_code == 409
+    assert db.query(VerdictRow).filter_by(photo_id=stale_end_id, attempt=2).count() == 0
+
+
 def test_failed_appeal_changes_nothing(client, auth, jpeg, db, judge):
     judge.verdict = Verdict("fail", 0.95, "게임입니다.", {})
     photo_id = start(client, auth, jpeg)["photo_id"]

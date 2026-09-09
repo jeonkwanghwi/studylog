@@ -5,7 +5,7 @@ from app.config import settings
 from app.db import get_db
 from app.judge.base import JudgeProvider, get_judge, is_pass, judge_photo
 from app.models import DailyRecord, Photo, StudySession, User, Verdict
-from app.routers.sessions import close_session
+from app.routers.sessions import _open_session, close_session
 from app.schemas import AppealIn, JudgeResultOut, SessionOut
 from app.security import get_current_user
 from app.storage import PhotoStorage, get_storage
@@ -34,6 +34,14 @@ async def appeal_photo(
     day = study_day(photo.received_at)
     if db.query(DailyRecord).filter_by(user_id=user.id, date=day).count():
         raise HTTPException(status.HTTP_409_CONFLICT, "이미 정산된 날입니다")
+
+    # 통과시켜도 반영할 세션이 없으면 판정 전에 막는다. 그러지 않으면 AI 호출을
+    # 낭비하고, 단 한 번뿐인 이의제기를 아무 효과 없이 소모시킨다.
+    session = _open_session(db, user.id)
+    if photo.kind == "start" and session is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "이미 진행 중인 세션이 있습니다")
+    if photo.kind == "end" and session is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "이미 종료된 세션입니다")
 
     rejudged_at = now_utc()
     verdict = await judge_photo(judge, storage.get(photo.s3_key), body.text)
