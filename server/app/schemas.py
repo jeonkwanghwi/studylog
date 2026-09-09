@@ -40,3 +40,7 @@ class JudgeResultOut(BaseModel):
     photo_id: str
     reason: str
     session: SessionOut | None = None
+
+
+class AppealIn(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
