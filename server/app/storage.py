@@ -8,6 +8,7 @@ import imagehash
 from PIL import Image, ExifTags
 
 from app.config import settings
+from app.time_utils import KST
 
 _EXIF_DATETIME_ORIGINAL = next(
     tag for tag, name in ExifTags.TAGS.items() if name == "DateTimeOriginal"
@@ -22,12 +23,21 @@ class ProcessedImage:
 
 
 def _read_taken_at(image: Image.Image) -> datetime | None:
+    """EXIF 촬영시각을 KST aware로 읽는다.
+
+    EXIF DateTimeOriginal에는 타임존이 없다. 그대로 두면 naive라서
+    models.UTCDateTime이 저장을 거부한다(ValueError). 유저는 전원 KST이므로
+    KST로 해석해 붙인다.
+    """
     try:
         exif = image.getexif()
-        raw = exif.get(_EXIF_DATETIME_ORIGINAL)
+        # 실제 카메라는 DateTimeOriginal을 Exif 서브 IFD(0x8769)에 넣는다.
+        # base IFD만 보면 대부분의 사진에서 못 찾는다.
+        raw = (exif.get_ifd(0x8769).get(_EXIF_DATETIME_ORIGINAL)
+               or exif.get(_EXIF_DATETIME_ORIGINAL))
         if not raw:
             return None
-        return datetime.strptime(raw, "%Y:%m:%d %H:%M:%S")
+        return datetime.strptime(raw, "%Y:%m:%d %H:%M:%S").replace(tzinfo=KST)
     except Exception:
         return None
 

@@ -13,7 +13,7 @@ class UserOut(BaseModel):
     daily_goal_minutes: int
     pending_goal_minutes: int | None
     streak_count: int
-    pass_tickets: int
+    credit_balance: int
 
     model_config = {"from_attributes": True}
 

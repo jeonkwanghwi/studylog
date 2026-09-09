@@ -17,7 +17,7 @@ def test_new_user_starts_with_zero_streak_and_tickets(db):
     db.add(user)
     db.commit()
     assert user.streak_count == 0
-    assert user.pass_tickets == 0
+    assert user.credit_balance == 0
     assert user.pending_goal_minutes is None
 
 

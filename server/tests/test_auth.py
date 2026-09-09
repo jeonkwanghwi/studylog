@@ -52,4 +52,4 @@ def test_me_returns_the_logged_in_user(client):
     r = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert r.json()["nickname"] == "휘"
-    assert r.json()["pass_tickets"] == 0
+    assert r.json()["credit_balance"] == 0

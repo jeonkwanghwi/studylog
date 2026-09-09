@@ -30,8 +30,7 @@ class Settings(BaseSettings):
     # 결제
     revenuecat_webhook_secret: str = "dev-webhook-secret"
     restore_window_hours: int = 24
-    tickets_for_defense: int = 1
-    tickets_for_restore: int = 2
+    restore_credit_cost: int = 2000
 
     # 알림
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"

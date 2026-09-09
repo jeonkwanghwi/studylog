@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column("daily_goal_minutes", sa.Integer(), nullable=False),
         sa.Column("pending_goal_minutes", sa.Integer(), nullable=True),
         sa.Column("streak_count", sa.Integer(), nullable=False),
-        sa.Column("pass_tickets", sa.Integer(), nullable=False),
+        sa.Column("credit_balance", sa.Integer(), nullable=False),
         sa.Column("expo_push_token", sa.String(length=255), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("provider", "provider_sub", name="uq_users_provider_provider_sub"),
@@ -93,6 +93,23 @@ def upgrade() -> None:
     op.create_index("ix_verdicts_photo_id", "verdicts", ["photo_id"])
 
     op.create_table(
+        "challenges",
+        sa.Column("id", sa.String(length=36), primary_key=True),
+        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("product_id", sa.String(length=32), nullable=False),
+        sa.Column("entry_amount", sa.Integer(), nullable=False),
+        sa.Column("daily_payback", sa.Integer(), nullable=False),
+        sa.Column("completion_bonus", sa.Integer(), nullable=False),
+        sa.Column("total_days", sa.Integer(), nullable=False),
+        sa.Column("started_on", sa.Date(), nullable=False),
+        sa.Column("ends_on", sa.Date(), nullable=False),
+        sa.Column("paid_with", sa.String(length=8), nullable=False),
+        sa.Column("status", sa.String(length=10), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    op.create_index("ix_challenges_user_id", "challenges", ["user_id"])
+
+    op.create_table(
         "daily_records",
         sa.Column("id", sa.String(length=36), primary_key=True),
         sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id"), nullable=False),
@@ -100,7 +117,8 @@ def upgrade() -> None:
         sa.Column("total_minutes", sa.Integer(), nullable=False),
         sa.Column("goal_minutes", sa.Integer(), nullable=False),
         sa.Column("result", sa.String(length=8), nullable=False),
-        sa.Column("pass_tickets_used", sa.Integer(), nullable=False),
+        sa.Column("challenge_id", sa.String(length=36), sa.ForeignKey("challenges.id"), nullable=True),
+        sa.Column("payback_amount", sa.Integer(), nullable=False),
         sa.Column("streak_snapshot", sa.Integer(), nullable=False),
         sa.Column("settled_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("user_id", "date", name="uq_daily_records_user_id_date"),
@@ -108,21 +126,39 @@ def upgrade() -> None:
     op.create_index("ix_daily_records_user_id", "daily_records", ["user_id"])
 
     op.create_table(
+        "credit_ledger",
+        sa.Column("id", sa.String(length=36), primary_key=True),
+        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("delta", sa.Integer(), nullable=False),
+        sa.Column("reason", sa.String(length=16), nullable=False),
+        sa.Column("ref_id", sa.String(length=36), nullable=True),
+        sa.Column("balance_after", sa.Integer(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    op.create_index("ix_credit_ledger_user_id", "credit_ledger", ["user_id"])
+
+    op.create_table(
         "purchases",
         sa.Column("id", sa.String(length=36), primary_key=True),
         sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("revenuecat_event_id", sa.String(length=64), nullable=False, unique=True),
         sa.Column("product_id", sa.String(length=32), nullable=False),
-        sa.Column("tickets_granted", sa.Integer(), nullable=False),
+        sa.Column("amount", sa.Integer(), nullable=False),
+        sa.Column("challenge_id", sa.String(length=36), sa.ForeignKey("challenges.id"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_purchases_user_id", "purchases", ["user_id"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_purchases_user_id", table_name="purchases")
     op.drop_table("purchases")
+    op.drop_index("ix_credit_ledger_user_id", table_name="credit_ledger")
+    op.drop_table("credit_ledger")
     op.drop_index("ix_daily_records_user_id", table_name="daily_records")
     op.drop_table("daily_records")
+    op.drop_index("ix_challenges_user_id", table_name="challenges")
+    op.drop_table("challenges")
     op.drop_index("ix_verdicts_photo_id", table_name="verdicts")
     op.drop_table("verdicts")
     op.drop_index("ix_study_sessions_user_id", table_name="study_sessions")

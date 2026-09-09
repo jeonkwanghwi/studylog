@@ -51,7 +51,7 @@ class User(Base):
     daily_goal_minutes: Mapped[int] = mapped_column(Integer, default=60)
     pending_goal_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     streak_count: Mapped[int] = mapped_column(Integer, default=0)
-    pass_tickets: Mapped[int] = mapped_column(Integer, default=0)
+    credit_balance: Mapped[int] = mapped_column(Integer, default=0)   # 원 단위
     expo_push_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
 
@@ -128,9 +128,42 @@ class DailyRecord(Base):
     total_minutes: Mapped[int] = mapped_column(Integer)
     goal_minutes: Mapped[int] = mapped_column(Integer)
     result: Mapped[str] = mapped_column(String(8))          # success | passed | failed
-    pass_tickets_used: Mapped[int] = mapped_column(Integer, default=0)
+    challenge_id: Mapped[str | None] = mapped_column(ForeignKey("challenges.id"), nullable=True)
+    payback_amount: Mapped[int] = mapped_column(Integer, default=0)
     streak_snapshot: Mapped[int] = mapped_column(Integer)
     settled_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
+
+
+class Challenge(Base):
+    __tablename__ = "challenges"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    product_id: Mapped[str] = mapped_column(String(32))     # challenge_7d | challenge_30d
+    entry_amount: Mapped[int] = mapped_column(Integer)      # 낸 참가비 (원)
+    daily_payback: Mapped[int] = mapped_column(Integer)     # 하루 달성 시 적립액
+    completion_bonus: Mapped[int] = mapped_column(Integer, default=0)
+    total_days: Mapped[int] = mapped_column(Integer)
+    started_on: Mapped[Date] = mapped_column(SADate)
+    ends_on: Mapped[Date] = mapped_column(SADate)
+    paid_with: Mapped[str] = mapped_column(String(8))       # iap | credit
+    status: Mapped[str] = mapped_column(String(10))         # active | completed | refunded
+    created_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
+
+
+class CreditLedger(Base):
+    """크레딧 증감 원장. 잔액만 들고 있으면 "왜 3천원이 비지?"에 답할 수 없다."""
+
+    __tablename__ = "credit_ledger"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    delta: Mapped[int] = mapped_column(Integer)             # ±원
+    # purchase | payback | bonus | entry | restore | expire | refund
+    reason: Mapped[str] = mapped_column(String(16))
+    ref_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    balance_after: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
 
 
 class Purchase(Base):
@@ -140,5 +173,6 @@ class Purchase(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     revenuecat_event_id: Mapped[str] = mapped_column(String(64), unique=True)
     product_id: Mapped[str] = mapped_column(String(32))
-    tickets_granted: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[int] = mapped_column(Integer)
+    challenge_id: Mapped[str | None] = mapped_column(ForeignKey("challenges.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TS, default=now_utc)

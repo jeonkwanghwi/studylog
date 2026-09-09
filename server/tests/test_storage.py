@@ -46,6 +46,20 @@ def test_missing_exif_yields_none():
     assert process_image(make_jpeg(600, 600)).taken_at is None
 
 
+def test_exif_time_is_returned_timezone_aware():
+    """naive로 두면 models.UTCDateTime이 저장을 거부한다."""
+    buf = io.BytesIO()
+    image = Image.new("RGB", (600, 600), (10, 20, 30))
+    exif = image.getexif()
+    exif[36867] = "2026:09:09 14:30:00"      # DateTimeOriginal
+    image.save(buf, format="JPEG", exif=exif)
+
+    taken = process_image(buf.getvalue()).taken_at
+    assert taken is not None
+    assert taken.tzinfo is not None
+    assert taken.hour == 14 and taken.utcoffset().total_seconds() == 9 * 3600
+
+
 def test_photo_key_is_namespaced_by_user():
     assert photo_key("u1", "p1") == "photos/u1/p1.jpg"
 
