@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** StudyLog v1의 백엔드 — 사진 업로드·AI 판정·세션 타이머·04:00 정산·패스권 결제·푸시 알림을 제공하는 FastAPI 서버를 만든다.
+**Goal:** StudyLog v1의 백엔드 — 사진 업로드·AI 판정·세션 타이머·04:00 정산·챌린지 선결제와 크레딧 페이백·푸시 알림을 제공하는 FastAPI 서버를 만든다.
 
 **Architecture:** 단일 FastAPI 프로세스 + Postgres + S3. 사진은 앱이 서버로 직접 multipart POST하고, 서버가 리사이즈 후 S3에 올린 뒤 **같은 요청 안에서 동기로 AI 판정**한다(큐 없음). 타이머는 서버가 요청을 받은 시각의 뺄셈이다. 정산·미종료 세션 회수·알림은 cron이 부르는 배치 함수이며, HTTP 레이어와 분리해 단위 테스트한다.
 
@@ -19,12 +19,18 @@
 - 판정 임계: `decision == "fail" AND confidence >= 0.7` → fail, **그 외 전부 pass**
 - 판정 타임아웃 **10초**. 초과하거나 예외가 나면 **pass 처리**하고 로그를 남긴다
 - 판정 모델 기본값 `claude-haiku-4-5`. `JUDGE_PROVIDER` / `JUDGE_MODEL` env로 교체 가능
+- 인증 상태 코드: 토큰이 **없거나 잘못됐으면 401**, 인증은 됐지만 **자원 권한이 없으면 403**(예: 비회원의 그룹 피드 조회). `HTTPBearer()`를 기본 설정 그대로 쓰고 상태 코드를 손으로 만들지 않는다
 - 이미지는 저장 전 **긴 변 1280px, JPEG quality 80**으로 리사이즈. 원본은 남기지 않는다
 - 이의제기는 사진당 **1회**. `verdicts(photo_id, attempt)` unique가 DB 레벨에서 강제한다
 - 이의제기가 만드는 시각은 항상 유저에게 불리한 쪽: 시작 샷은 **재판정 시각**, 종료 샷은 **최초 수신 시각**
 - 목표 시간 변경은 `pending_goal_minutes`에 쓰고 **다음 04:00 정산 직후** 승격
-- 패스권은 한 종류. 사전 방어 **1개**, 사후 복구 **2개** 차감. 복구 시한은 정산 후 **24시간**
-- SKU: `pass_3` → 3개, `pass_10` → 10개
+- 결제는 **선 결제 → 인앱 크레딧 페이백**이다. 유저가 챌린지 참가비를 먼저 내고, 목표를 달성한 날마다 `daily_payback`이 크레딧으로 적립된다. 실패한 날의 몫은 서비스에 귀속된다
+- SKU: `challenge_7d` = 7일 ₩7,000 / 일일 ₩1,000 / 완주 보너스 없음. `challenge_30d` = 30일 ₩30,000 / 일일 ₩1,000 / 완주 보너스 ₩3,000
+- **완주 보너스는 `paid_with == "iap"`인 챌린지에만 준다.** 크레딧으로 참가한 챌린지에 주면 크레딧이 무한 증식한다
+- 유저당 `active` 챌린지는 최대 1개. 챌린지 없이도 앱은 정상 동작하고 크레딧만 안 쌓인다
+- streak 복구는 **크레딧 ₩2,000** 차감, 정산 후 **24시간** 이내. 복구해도 그날 `payback_amount`는 0으로 남는다
+- 크레딧 증감은 **예외 없이 `credit_ledger`에 기록**한다. `users.credit_balance`는 원장의 캐시다
+- **규제 전제 — 깨면 전자금융업 등록 대상이 된다**: 결제는 IAP로만 받는다(자체 결제창·계좌이체 금지), 크레딧은 현금 환급 불가, 크레딧은 이 앱 안에서만 쓰인다, 유저 간 금전 이동 없음
 - pHash·EXIF는 **저장만** 한다. v1에서 어떤 차단 판단에도 쓰지 않는다
 - 모든 금액·시간 상수는 `app/config.py`의 `Settings`에 두고 하드코딩하지 않는다
 
@@ -177,11 +183,10 @@ class Settings(BaseSettings):
     session_max_minutes: int = 240
     session_warn_minutes: int = 210
 
-    # 결제
+    # 결제 — 선 결제, 후 크레딧 페이백
     revenuecat_webhook_secret: str = "dev-webhook-secret"
     restore_window_hours: int = 24
-    tickets_for_defense: int = 1
-    tickets_for_restore: int = 2
+    restore_credit_cost: int = 2000      # streak 복구 비용 (원)
 
     # 알림
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
@@ -396,7 +401,7 @@ def test_new_user_starts_with_zero_streak_and_tickets(db):
     db.add(user)
     db.commit()
     assert user.streak_count == 0
-    assert user.pass_tickets == 0
+    assert user.credit_balance == 0
     assert user.pending_goal_minutes is None
 
 
@@ -575,7 +580,7 @@ class User(Base):
     daily_goal_minutes: Mapped[int] = mapped_column(Integer, default=60)
     pending_goal_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     streak_count: Mapped[int] = mapped_column(Integer, default=0)
-    pass_tickets: Mapped[int] = mapped_column(Integer, default=0)
+    credit_balance: Mapped[int] = mapped_column(Integer, default=0)   # 원 단위
     expo_push_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
 
@@ -652,9 +657,42 @@ class DailyRecord(Base):
     total_minutes: Mapped[int] = mapped_column(Integer)
     goal_minutes: Mapped[int] = mapped_column(Integer)
     result: Mapped[str] = mapped_column(String(8))          # success | passed | failed
-    pass_tickets_used: Mapped[int] = mapped_column(Integer, default=0)
+    challenge_id: Mapped[str | None] = mapped_column(ForeignKey("challenges.id"), nullable=True)
+    payback_amount: Mapped[int] = mapped_column(Integer, default=0)
     streak_snapshot: Mapped[int] = mapped_column(Integer)
     settled_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
+
+
+class Challenge(Base):
+    __tablename__ = "challenges"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    product_id: Mapped[str] = mapped_column(String(32))     # challenge_7d | challenge_30d
+    entry_amount: Mapped[int] = mapped_column(Integer)      # 낸 참가비 (원)
+    daily_payback: Mapped[int] = mapped_column(Integer)     # 하루 달성 시 적립액
+    completion_bonus: Mapped[int] = mapped_column(Integer, default=0)
+    total_days: Mapped[int] = mapped_column(Integer)
+    started_on: Mapped[Date] = mapped_column(SADate)
+    ends_on: Mapped[Date] = mapped_column(SADate)
+    paid_with: Mapped[str] = mapped_column(String(8))       # iap | credit
+    status: Mapped[str] = mapped_column(String(10))         # active | completed | refunded
+    created_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
+
+
+class CreditLedger(Base):
+    """크레딧 증감 원장. 잔액만 들고 있으면 "왜 3천원이 비지?"에 답할 수 없다."""
+
+    __tablename__ = "credit_ledger"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    delta: Mapped[int] = mapped_column(Integer)             # ±원
+    # purchase | payback | bonus | entry | restore | expire | refund
+    reason: Mapped[str] = mapped_column(String(16))
+    ref_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    balance_after: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
 
 
 class Purchase(Base):
@@ -664,7 +702,8 @@ class Purchase(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     revenuecat_event_id: Mapped[str] = mapped_column(String(64), unique=True)
     product_id: Mapped[str] = mapped_column(String(32))
-    tickets_granted: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[int] = mapped_column(Integer)
+    challenge_id: Mapped[str | None] = mapped_column(ForeignKey("challenges.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
 ```
 
@@ -697,8 +736,8 @@ target_metadata = Base.metadata
 alembic revision --autogenerate -m "initial schema"
 ```
 
-생성된 파일을 `alembic/versions/0001_initial.py`로 이름을 바꾸고, 8개 테이블과
-unique 제약 3개(`users(provider, provider_sub)`, `groups.invite_code`,
+생성된 파일을 `alembic/versions/0001_initial.py`로 이름을 바꾸고, 10개 테이블과
+unique 제약 5개(`users(provider, provider_sub)`, `groups.invite_code`,
 `verdicts(photo_id, attempt)`, `daily_records(user_id, date)`,
 `purchases.revenuecat_event_id`)가 모두 들어갔는지 눈으로 확인한다.
 
@@ -709,7 +748,7 @@ Expected: 세 명령 모두 에러 없이 끝난다
 
 Postgres를 띄울 수 없는 환경이면 이 스텝은 **건너뛰고** 마이그레이션 파일을 눈으로만
 검증한다. `alembic revision --autogenerate`도 DB 연결이 필요하므로, 그 경우
-마이그레이션은 `Base.metadata`를 보고 손으로 쓴다 — 8개 테이블과 unique 제약 5개.
+마이그레이션은 `Base.metadata`를 보고 손으로 쓴다 — 10개 테이블과 unique 제약 5개.
 
 - [ ] **Step 8: 커밋**
 
@@ -781,7 +820,9 @@ def test_invalid_social_token_is_rejected(client):
 
 
 def test_me_requires_a_token(client):
-    assert client.get("/users/me").status_code == 403
+    # 자격증명 자체가 없으면 401이다. 403은 "인증은 됐는데 권한이 없다"는 뜻이라
+    # 로그인하지 않은 요청에는 맞지 않는다.
+    assert client.get("/users/me").status_code == 401
 
 
 def test_me_returns_the_logged_in_user(client):
@@ -792,7 +833,7 @@ def test_me_returns_the_logged_in_user(client):
     r = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert r.json()["nickname"] == "휘"
-    assert r.json()["pass_tickets"] == 0
+    assert r.json()["credit_balance"] == 0
 ```
 
 - [ ] **Step 2: 테스트가 실패하는지 확인**
@@ -913,7 +954,7 @@ class UserOut(BaseModel):
     daily_goal_minutes: int
     pending_goal_minutes: int | None
     streak_count: int
-    pass_tickets: int
+    credit_balance: int
 
     model_config = {"from_attributes": True}
 
@@ -1450,6 +1491,20 @@ def test_missing_exif_yields_none():
     assert process_image(make_jpeg(600, 600)).taken_at is None
 
 
+def test_exif_time_is_returned_timezone_aware():
+    """naive로 두면 models.UTCDateTime이 저장을 거부한다."""
+    buf = io.BytesIO()
+    image = Image.new("RGB", (600, 600), (10, 20, 30))
+    exif = image.getexif()
+    exif[36867] = "2026:09:09 14:30:00"      # DateTimeOriginal
+    image.save(buf, format="JPEG", exif=exif)
+
+    taken = process_image(buf.getvalue()).taken_at
+    assert taken is not None
+    assert taken.tzinfo is not None
+    assert taken.hour == 14 and taken.utcoffset().total_seconds() == 9 * 3600
+
+
 def test_photo_key_is_namespaced_by_user():
     assert photo_key("u1", "p1") == "photos/u1/p1.jpg"
 
@@ -1481,6 +1536,7 @@ import imagehash
 from PIL import Image, ExifTags
 
 from app.config import settings
+from app.time_utils import KST
 
 _EXIF_DATETIME_ORIGINAL = next(
     tag for tag, name in ExifTags.TAGS.items() if name == "DateTimeOriginal"
@@ -1495,12 +1551,21 @@ class ProcessedImage:
 
 
 def _read_taken_at(image: Image.Image) -> datetime | None:
+    """EXIF 촬영시각을 KST aware로 읽는다.
+
+    EXIF DateTimeOriginal에는 타임존이 없다. 그대로 두면 naive라서
+    models.UTCDateTime이 저장을 거부한다(ValueError). 유저는 전원 KST이므로
+    KST로 해석해 붙인다.
+    """
     try:
         exif = image.getexif()
-        raw = exif.get(_EXIF_DATETIME_ORIGINAL)
+        # 실제 카메라는 DateTimeOriginal을 Exif 서브 IFD(0x8769)에 넣는다.
+        # base IFD만 보면 대부분의 사진에서 못 찾는다.
+        raw = (exif.get_ifd(0x8769).get(_EXIF_DATETIME_ORIGINAL)
+               or exif.get(_EXIF_DATETIME_ORIGINAL))
         if not raw:
             return None
-        return datetime.strptime(raw, "%Y:%m:%d %H:%M:%S")
+        return datetime.strptime(raw, "%Y:%m:%d %H:%M:%S").replace(tzinfo=KST)
     except Exception:
         return None
 
@@ -2388,7 +2453,7 @@ def test_push_token_is_saved(client, auth, db):
 
 
 def test_goal_change_requires_auth(client):
-    assert client.patch("/users/me/goal", json={"minutes": 30}).status_code == 403
+    assert client.patch("/users/me/goal", json={"minutes": 30}).status_code == 401
 ```
 
 - [ ] **Step 2: 테스트가 실패하는지 확인**
@@ -2930,64 +2995,193 @@ git commit -m "feat(server): 그룹 피드와 사진 조회 URL"
 
 ---
 
-## Task 14: RevenueCat 웹훅으로 패스권 지급
+## Task 14: 챌린지 참가 (IAP 웹훅 + 크레딧 참가)
 
-클라이언트가 "샀다"고 말하는 것은 신뢰하지 않는다. 지급은 웹훅으로만 일어난다.
+선 결제 모델의 입구다. 참가 경로가 둘이다 — **RevenueCat 웹훅**(현금 결제)과
+**크레딧 차감**(재참가). 클라이언트가 "샀다"고 말하는 것은 어느 쪽도 신뢰하지 않는다.
 
 **Files:**
-- Create: `server/app/routers/webhooks.py`
-- Modify: `server/app/domain.py`, `server/app/main.py`
-- Test: `server/tests/test_webhooks.py`
+- Create: `server/app/routers/webhooks.py`, `server/app/routers/challenges.py`, `server/app/credits.py`
+- Modify: `server/app/domain.py`, `server/app/schemas.py`, `server/app/main.py`
+- Test: `server/tests/test_webhooks.py`, `server/tests/test_challenges.py`
 
 **Interfaces:**
-- Consumes: `Purchase`, `User`, `settings.revenuecat_webhook_secret`
+- Consumes: `Challenge`, `CreditLedger`, `Purchase`, `User`, `get_current_user`, `study_day`, `settings.revenuecat_webhook_secret`
 - Produces:
-  - `app.domain.TICKETS_BY_PRODUCT: dict[str, int]`
-  - `POST /webhooks/revenuecat` → `{"granted": int}`
+  - `app.domain.CHALLENGE_PRODUCTS: dict[str, ChallengeSpec]`
+  - `app.domain.ChallengeSpec(days: int, price: int, daily_payback: int, completion_bonus: int)` — NamedTuple
+  - `app.credits.move(db, user, delta, reason, ref_id=None) -> CreditLedger` — 잔액과 원장을 한 번에 갱신
+  - `app.credits.start_challenge(db, user, product_id, paid_with, today) -> Challenge`
+  - `POST /webhooks/revenuecat` → `{"started": bool}`
+  - `POST /challenges` body `{"product_id": str}` → `ChallengeOut` (크레딧 참가)
+  - `GET /challenges/current` → `ChallengeOut | null`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [ ] **Step 1: 상품표와 크레딧 원장 테스트 작성**
+
+`server/tests/test_challenges.py`:
+
+```python
+import pytest
+
+from app.credits import move, start_challenge
+from app.domain import CHALLENGE_PRODUCTS
+from app.models import Challenge, CreditLedger, User
+from app.time_utils import now_utc, study_day
+
+
+@pytest.fixture()
+def user(db):
+    u = User(provider="apple", provider_sub="s", nickname="광휘")
+    db.add(u)
+    db.commit()
+    return u
+
+
+def test_product_table_matches_the_spec():
+    seven = CHALLENGE_PRODUCTS["challenge_7d"]
+    assert (seven.days, seven.price, seven.daily_payback, seven.completion_bonus) == (7, 7000, 1000, 0)
+    thirty = CHALLENGE_PRODUCTS["challenge_30d"]
+    assert (thirty.days, thirty.price, thirty.daily_payback, thirty.completion_bonus) == (30, 30000, 1000, 3000)
+
+
+def test_daily_payback_never_exceeds_entry_per_day():
+    """넘으면 완주자가 낸 돈보다 많이 받아가고 크레딧이 무한 증식한다."""
+    for spec in CHALLENGE_PRODUCTS.values():
+        assert spec.daily_payback * spec.days <= spec.price
+
+
+def test_move_updates_balance_and_writes_a_ledger_row(db, user):
+    move(db, user, 7000, "purchase")
+    db.commit()
+
+    assert user.credit_balance == 7000
+    row = db.query(CreditLedger).one()
+    assert (row.delta, row.reason, row.balance_after) == (7000, "purchase", 7000)
+
+
+def test_move_records_running_balance(db, user):
+    move(db, user, 5000, "purchase")
+    move(db, user, -2000, "restore")
+    db.commit()
+
+    assert user.credit_balance == 3000
+    balances = [r.balance_after for r in db.query(CreditLedger).order_by(CreditLedger.created_at)]
+    assert balances[-1] == 3000
+
+
+def test_balance_never_goes_negative(db, user):
+    move(db, user, 1000, "purchase")
+    db.commit()
+    with pytest.raises(ValueError):
+        move(db, user, -5000, "entry")
+
+
+def test_iap_entry_carries_the_completion_bonus(db, user):
+    challenge = start_challenge(db, user, "challenge_30d", "iap", study_day(now_utc()))
+    db.commit()
+
+    assert challenge.status == "active"
+    assert challenge.paid_with == "iap"
+    assert challenge.completion_bonus == 3000
+    assert challenge.total_days == 30
+    assert (challenge.ends_on - challenge.started_on).days == 29
+
+
+def test_credit_entry_gets_no_completion_bonus(db, user):
+    """크레딧 참가에도 보너스를 주면 완주자가 크레딧을 무한 증식시킨다."""
+    move(db, user, 30000, "purchase")
+    db.commit()
+    challenge = start_challenge(db, user, "challenge_30d", "credit", study_day(now_utc()))
+    db.commit()
+
+    assert challenge.completion_bonus == 0
+    assert user.credit_balance == 0
+    assert db.query(CreditLedger).filter_by(reason="entry").one().delta == -30000
+
+
+def test_credit_entry_requires_enough_balance(db, user):
+    with pytest.raises(ValueError):
+        start_challenge(db, user, "challenge_30d", "credit", study_day(now_utc()))
+
+
+def test_only_one_active_challenge_per_user(db, user):
+    start_challenge(db, user, "challenge_7d", "iap", study_day(now_utc()))
+    db.commit()
+    with pytest.raises(ValueError):
+        start_challenge(db, user, "challenge_7d", "iap", study_day(now_utc()))
+
+
+def test_join_by_credit_endpoint(client, auth, db):
+    user = db.query(User).one()
+    move(db, user, 7000, "purchase")
+    db.commit()
+
+    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    assert r.status_code == 200
+    assert r.json()["paid_with"] == "credit"
+    db.refresh(user)
+    assert user.credit_balance == 0
+
+
+def test_join_by_credit_without_balance_is_payment_required(client, auth):
+    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    assert r.status_code == 402
+
+
+def test_current_challenge_endpoint(client, auth, db):
+    assert client.get("/challenges/current", headers=auth).json() is None
+    user = db.query(User).one()
+    move(db, user, 7000, "purchase")
+    db.commit()
+    client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    assert client.get("/challenges/current", headers=auth).json()["status"] == "active"
+```
+
+- [ ] **Step 2: 웹훅 테스트 작성**
 
 `server/tests/test_webhooks.py`:
 
 ```python
 from app.config import settings
-from app.models import Purchase, User
+from app.models import Challenge, CreditLedger, Purchase, User
 
 HEADERS = {"Authorization": f"Bearer {settings.revenuecat_webhook_secret}"}
 
 
-def event(user_id, event_id="evt-1", product_id="pass_3",
+def event(user_id, event_id="evt-1", product_id="challenge_7d",
           type_="NON_RENEWING_PURCHASE"):
     return {"event": {"id": event_id, "type": type_,
                       "app_user_id": user_id, "product_id": product_id}}
 
 
-def test_purchase_grants_tickets(client, auth, db):
+def test_purchase_starts_a_challenge(client, auth, db):
     user = db.query(User).one()
     r = client.post("/webhooks/revenuecat", headers=HEADERS, json=event(user.id))
 
-    assert r.status_code == 200 and r.json()["granted"] == 3
-    db.refresh(user)
-    assert user.pass_tickets == 3
-    assert db.query(Purchase).count() == 1
+    assert r.status_code == 200 and r.json()["started"] is True
+    challenge = db.query(Challenge).one()
+    assert challenge.status == "active" and challenge.paid_with == "iap"
+    assert challenge.entry_amount == 7000
+    assert db.query(Purchase).one().challenge_id == challenge.id
 
 
-def test_ten_pack_grants_ten(client, auth, db):
+def test_purchase_does_not_credit_the_entry_fee(client, auth, db):
+    """참가비는 크레딧이 아니라 챌린지가 된다. 크레딧으로 넣으면 즉시 환급이나 마찬가지다."""
     user = db.query(User).one()
-    client.post("/webhooks/revenuecat", headers=HEADERS,
-                json=event(user.id, product_id="pass_10"))
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=event(user.id))
+
     db.refresh(user)
-    assert user.pass_tickets == 10
+    assert user.credit_balance == 0
+    assert db.query(CreditLedger).filter_by(reason="purchase").count() == 0
 
 
-def test_replayed_event_grants_nothing_extra(client, auth, db):
+def test_replayed_event_starts_nothing_extra(client, auth, db):
     user = db.query(User).one()
     client.post("/webhooks/revenuecat", headers=HEADERS, json=event(user.id))
     r = client.post("/webhooks/revenuecat", headers=HEADERS, json=event(user.id))
 
-    assert r.json()["granted"] == 0
-    db.refresh(user)
-    assert user.pass_tickets == 3
+    assert r.json()["started"] is False
+    assert db.query(Challenge).count() == 1
     assert db.query(Purchase).count() == 1
 
 
@@ -2996,47 +3190,195 @@ def test_wrong_secret_is_rejected(client, auth, db):
     r = client.post("/webhooks/revenuecat",
                     headers={"Authorization": "Bearer nope"}, json=event(user.id))
     assert r.status_code == 401
-    db.refresh(user)
-    assert user.pass_tickets == 0
+    assert db.query(Challenge).count() == 0
 
 
 def test_unrelated_event_types_are_ignored(client, auth, db):
     user = db.query(User).one()
     r = client.post("/webhooks/revenuecat", headers=HEADERS,
                     json=event(user.id, type_="TEST"))
-    assert r.status_code == 200 and r.json()["granted"] == 0
-    db.refresh(user)
-    assert user.pass_tickets == 0
+    assert r.status_code == 200 and r.json()["started"] is False
+    assert db.query(Challenge).count() == 0
 
 
-def test_unknown_product_grants_nothing(client, auth, db):
+def test_unknown_product_starts_nothing(client, auth, db):
     user = db.query(User).one()
     r = client.post("/webhooks/revenuecat", headers=HEADERS,
-                    json=event(user.id, product_id="pass_999"))
-    assert r.json()["granted"] == 0
+                    json=event(user.id, product_id="challenge_999"))
+    assert r.json()["started"] is False
 
 
 def test_unknown_user_is_ignored(client, auth):
     r = client.post("/webhooks/revenuecat", headers=HEADERS, json=event("no-such-user"))
-    assert r.status_code == 200 and r.json()["granted"] == 0
+    assert r.status_code == 200 and r.json()["started"] is False
+
+
+def test_second_purchase_while_active_is_recorded_but_starts_nothing(client, auth, db):
+    """활성 챌린지는 1개다. 영수증은 남기되 두 번째 챌린지를 열지 않는다."""
+    user = db.query(User).one()
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=event(user.id))
+    r = client.post("/webhooks/revenuecat", headers=HEADERS,
+                    json=event(user.id, event_id="evt-2"))
+
+    assert r.json()["started"] is False
+    assert db.query(Challenge).count() == 1
+    assert db.query(Purchase).count() == 2
 ```
 
-- [ ] **Step 2: 테스트가 실패하는지 확인**
+- [ ] **Step 3: 테스트가 실패하는지 확인**
 
-Run: `cd server && python -m pytest tests/test_webhooks.py -v`
-Expected: FAIL — 404 (엔드포인트 없음)
+Run: `cd server && .venv/bin/python -m pytest tests/test_challenges.py tests/test_webhooks.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.credits'`
 
-- [ ] **Step 3: SKU 매핑 추가**
+- [ ] **Step 4: 상품표 작성**
 
 `server/app/domain.py`에 추가한다:
 
 ```python
-# 스펙 §4.5. 패스권은 한 종류이고 묶음 크기만 다르다
-TICKETS_BY_PRODUCT = {"pass_3": 3, "pass_10": 10}
+from typing import NamedTuple
+
+
+class ChallengeSpec(NamedTuple):
+    days: int
+    price: int              # 원
+    daily_payback: int      # 하루 달성 시 적립액 (원)
+    completion_bonus: int   # 전일 달성 시 추가 적립. IAP 참가에만 지급
+
+
+# 선 결제 → 인앱 크레딧 페이백. daily_payback * days 는 price 를 넘지 않는다.
+CHALLENGE_PRODUCTS: dict[str, ChallengeSpec] = {
+    "challenge_7d": ChallengeSpec(days=7, price=7000, daily_payback=1000, completion_bonus=0),
+    "challenge_30d": ChallengeSpec(days=30, price=30000, daily_payback=1000, completion_bonus=3000),
+}
+
 GRANTING_EVENT_TYPES = {"INITIAL_PURCHASE", "NON_RENEWING_PURCHASE"}
 ```
 
-- [ ] **Step 4: 라우터 작성**
+- [ ] **Step 5: 크레딧 원장 작성**
+
+`server/app/credits.py`:
+
+```python
+from datetime import date as Date, timedelta
+
+from sqlalchemy.orm import Session
+
+from app.domain import CHALLENGE_PRODUCTS
+from app.models import Challenge, CreditLedger, User
+
+
+def move(db: Session, user: User, delta: int, reason: str,
+         ref_id: str | None = None) -> CreditLedger:
+    """크레딧을 움직인다. 잔액과 원장을 항상 함께 갱신한다.
+
+    크레딧은 돈이다. 잔액만 바꾸고 원장을 안 남기면 차이가 났을 때 추적할 수 없다.
+    """
+    new_balance = user.credit_balance + delta
+    if new_balance < 0:
+        raise ValueError("크레딧 잔액이 부족합니다")
+
+    user.credit_balance = new_balance
+    row = CreditLedger(user_id=user.id, delta=delta, reason=reason,
+                       ref_id=ref_id, balance_after=new_balance)
+    db.add(row)
+    db.flush()
+    return row
+
+
+def active_challenge(db: Session, user_id: str) -> Challenge | None:
+    return (db.query(Challenge)
+              .filter_by(user_id=user_id, status="active")
+              .one_or_none())
+
+
+def start_challenge(db: Session, user: User, product_id: str,
+                    paid_with: str, today: Date) -> Challenge:
+    """챌린지를 연다. paid_with 가 'credit' 이면 참가비를 크레딧에서 뺀다."""
+    spec = CHALLENGE_PRODUCTS.get(product_id)
+    if spec is None:
+        raise ValueError(f"unknown product: {product_id}")
+    if active_challenge(db, user.id) is not None:
+        raise ValueError("이미 진행 중인 챌린지가 있습니다")
+
+    challenge = Challenge(
+        user_id=user.id, product_id=product_id, entry_amount=spec.price,
+        daily_payback=spec.daily_payback,
+        # 크레딧 참가에 보너스를 주면 완주자가 크레딧을 무한 증식시킨다
+        completion_bonus=spec.completion_bonus if paid_with == "iap" else 0,
+        total_days=spec.days, started_on=today,
+        ends_on=today + timedelta(days=spec.days - 1),
+        paid_with=paid_with, status="active",
+    )
+    db.add(challenge)
+    db.flush()
+
+    if paid_with == "credit":
+        move(db, user, -spec.price, "entry", challenge.id)
+    return challenge
+```
+
+- [ ] **Step 6: 스키마와 라우터 작성**
+
+`server/app/schemas.py`에 추가한다:
+
+```python
+class ChallengeJoinIn(BaseModel):
+    product_id: str = Field(min_length=1, max_length=32)
+
+
+class ChallengeOut(BaseModel):
+    id: str
+    product_id: str
+    entry_amount: int
+    daily_payback: int
+    completion_bonus: int
+    total_days: int
+    started_on: Date
+    ends_on: Date
+    paid_with: str
+    status: str
+
+    model_config = {"from_attributes": True}
+```
+
+`server/app/routers/challenges.py`:
+
+```python
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.credits import active_challenge, start_challenge
+from app.db import get_db
+from app.models import Challenge, User
+from app.schemas import ChallengeJoinIn, ChallengeOut
+from app.security import get_current_user
+from app.time_utils import now_utc, study_day
+
+router = APIRouter(prefix="/challenges", tags=["challenges"])
+
+
+@router.post("", response_model=ChallengeOut)
+def join_with_credit(
+    body: ChallengeJoinIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Challenge:
+    """크레딧으로 재참가한다. 현금 결제는 IAP 웹훅으로만 들어온다."""
+    try:
+        challenge = start_challenge(db, user, body.product_id, "credit",
+                                    study_day(now_utc()))
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(exc))
+    db.commit()
+    return challenge
+
+
+@router.get("/current", response_model=ChallengeOut | None)
+def current(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> Challenge | None:
+    return active_challenge(db, user.id)
+```
 
 `server/app/routers/webhooks.py`:
 
@@ -3048,9 +3390,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.credits import start_challenge
 from app.db import get_db
-from app.domain import GRANTING_EVENT_TYPES, TICKETS_BY_PRODUCT
+from app.domain import CHALLENGE_PRODUCTS, GRANTING_EVENT_TYPES
 from app.models import Purchase, User
+from app.time_utils import now_utc, study_day
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["webhooks"])
@@ -3061,48 +3405,60 @@ def revenuecat(
     payload: dict,
     authorization: str = Header(default=""),
     db: Session = Depends(get_db),
-) -> dict[str, int]:
+) -> dict[str, bool]:
     expected = f"Bearer {settings.revenuecat_webhook_secret}"
     if not hmac.compare_digest(authorization, expected):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid webhook secret")
 
     event = payload.get("event", {})
     if event.get("type") not in GRANTING_EVENT_TYPES:
-        return {"granted": 0}
+        return {"started": False}
 
-    tickets = TICKETS_BY_PRODUCT.get(event.get("product_id"))
-    if tickets is None:
+    spec = CHALLENGE_PRODUCTS.get(event.get("product_id"))
+    if spec is None:
         logger.warning("알 수 없는 상품: %s", event.get("product_id"))
-        return {"granted": 0}
+        return {"started": False}
 
     event_id = str(event.get("id"))
     if db.query(Purchase).filter_by(revenuecat_event_id=event_id).count():
-        return {"granted": 0}          # 웹훅은 재전송된다. 멱등이어야 한다
+        return {"started": False}      # 웹훅은 재전송된다. 멱등이어야 한다
 
     user = db.get(User, str(event.get("app_user_id")))
     if user is None:
-        logger.warning("알 수 없는 유저의 구매 이벤트: %s", event.get("app_user_id"))
-        return {"granted": 0}
+        logger.warning("알 수 없는 유저의 구매: %s", event.get("app_user_id"))
+        return {"started": False}
 
-    user.pass_tickets += tickets
+    try:
+        challenge = start_challenge(db, user, event["product_id"], "iap",
+                                    study_day(now_utc()))
+    except ValueError as exc:
+        # 활성 챌린지가 이미 있는 경우. 영수증은 남기되 두 번째를 열지 않는다.
+        logger.warning("챌린지 생성 실패 user=%s: %s", user.id, exc)
+        db.add(Purchase(user_id=user.id, revenuecat_event_id=event_id,
+                        product_id=event["product_id"], amount=spec.price,
+                        challenge_id=None))
+        db.commit()
+        return {"started": False}
+
     db.add(Purchase(user_id=user.id, revenuecat_event_id=event_id,
-                    product_id=event["product_id"], tickets_granted=tickets))
+                    product_id=event["product_id"], amount=spec.price,
+                    challenge_id=challenge.id))
     db.commit()
-    return {"granted": tickets}
+    return {"started": True}
 ```
 
-`server/app/main.py`에 `app.include_router(webhooks.router)`를 추가한다.
+`server/app/main.py`에 `challenges.router`와 `webhooks.router`를 등록한다.
 
-- [ ] **Step 5: 테스트 통과 확인**
+- [ ] **Step 7: 테스트 통과 확인**
 
-Run: `cd server && python -m pytest tests/test_webhooks.py -v`
-Expected: PASS (7 passed)
+Run: `cd server && .venv/bin/python -m pytest tests/test_challenges.py tests/test_webhooks.py -v`
+Expected: PASS (20 passed)
 
-- [ ] **Step 6: 커밋**
+- [ ] **Step 8: 커밋**
 
 ```bash
-git add server/app/routers/webhooks.py server/app/domain.py server/app/main.py server/tests/test_webhooks.py
-git commit -m "feat(server): RevenueCat 웹훅으로 패스권 지급"
+git add server/app/credits.py server/app/routers/challenges.py server/app/routers/webhooks.py server/app/domain.py server/app/schemas.py server/app/main.py server/tests/test_challenges.py server/tests/test_webhooks.py
+git commit -m "feat(server): 챌린지 참가 — IAP 웹훅과 크레딧 재참가"
 ```
 
 ---
@@ -3132,29 +3488,29 @@ DB를 만지는 배치는 그 위에 얇게 얹는다.
 from app.domain import settle_outcome
 
 
-def test_meeting_the_goal_increases_streak():
-    out = settle_outcome(total=70, goal=60, tickets=0, streak=4, defense_cost=1)
-    assert out == ("success", 0, 5)
+def test_meeting_the_goal_increases_streak_and_pays_back():
+    out = settle_outcome(total=70, goal=60, streak=4, daily_payback=1000)
+    assert out == ("success", 1000, 5)
 
 
 def test_exactly_the_goal_counts_as_success():
-    assert settle_outcome(total=60, goal=60, tickets=0, streak=0, defense_cost=1).result == "success"
+    assert settle_outcome(total=60, goal=60, streak=0, daily_payback=1000).result == "success"
 
 
-def test_shortfall_with_a_ticket_holds_the_streak():
-    out = settle_outcome(total=10, goal=60, tickets=3, streak=7, defense_cost=1)
-    assert out.result == "passed"
-    assert out.tickets_used == 1
-    assert out.new_streak == 7          # 유지될 뿐 늘지 않는다
-
-
-def test_shortfall_without_a_ticket_breaks_the_streak():
-    out = settle_outcome(total=10, goal=60, tickets=0, streak=7, defense_cost=1)
+def test_shortfall_breaks_the_streak_and_pays_nothing():
+    """실패한 날의 몫은 서비스에 귀속된다. 이게 이 모델의 매출이다."""
+    out = settle_outcome(total=10, goal=60, streak=7, daily_payback=1000)
     assert out == ("failed", 0, 0)
 
 
 def test_zero_minutes_is_a_shortfall():
-    assert settle_outcome(total=0, goal=60, tickets=0, streak=1, defense_cost=1).result == "failed"
+    assert settle_outcome(total=0, goal=60, streak=1, daily_payback=1000).result == "failed"
+
+
+def test_success_without_an_active_challenge_pays_nothing():
+    """챌린지 없이도 앱은 쓸 수 있다. streak는 오르고 크레딧만 안 쌓인다."""
+    out = settle_outcome(total=70, goal=60, streak=4, daily_payback=0)
+    assert out == ("success", 0, 5)
 ```
 
 - [ ] **Step 2: 테스트가 실패하는지 확인**
@@ -3171,18 +3527,20 @@ from typing import NamedTuple
 
 
 class Outcome(NamedTuple):
-    result: str          # success | passed | failed
-    tickets_used: int
+    result: str          # success | failed  (passed 는 사후 복구로만 생긴다)
+    payback: int         # 이날 적립될 크레딧
     new_streak: int
 
 
-def settle_outcome(total: int, goal: int, tickets: int,
-                   streak: int, defense_cost: int) -> Outcome:
-    """하루치 결과를 정한다. 스펙 §4.3."""
+def settle_outcome(total: int, goal: int, streak: int, daily_payback: int) -> Outcome:
+    """하루치 결과를 정한다. 스펙 §4.3.
+
+    선 결제 모델이라 사전 방어가 없다. 달성하면 하루치를 돌려받고,
+    못 하면 그 몫은 서비스에 귀속된다. `daily_payback`이 0이면 활성 챌린지가 없는
+    유저이며, streak만 계산되고 크레딧은 움직이지 않는다.
+    """
     if total >= goal:
-        return Outcome("success", 0, streak + 1)
-    if tickets >= defense_cost:
-        return Outcome("passed", defense_cost, streak)
+        return Outcome("success", daily_payback, streak + 1)
     return Outcome("failed", 0, 0)
 ```
 
@@ -3203,7 +3561,7 @@ from app.time_utils import day_bounds, now_utc, study_day
 @pytest.fixture()
 def user(db):
     u = User(provider="apple", provider_sub="s", nickname="광휘",
-             daily_goal_minutes=60, streak_count=3, pass_tickets=0)
+             daily_goal_minutes=60, streak_count=3, credit_balance=0)
     db.add(u)
     db.commit()
     return u
@@ -3236,20 +3594,99 @@ def test_meeting_the_goal_records_success(db, user):
     assert record.streak_snapshot == 4
 
 
-def test_shortfall_consumes_one_ticket(db, user):
-    user.pass_tickets = 2
-    db.commit()
+def test_success_pays_back_and_writes_a_ledger_row(db, user):
+    from app.credits import start_challenge
+    from app.models import CreditLedger
+
     day = study_day(now_utc()) - timedelta(days=1)
+    challenge = start_challenge(db, user, "challenge_30d", "iap", day)
+    db.commit()
+    add_session(db, user, day, 70)
+
+    settle_day(db, day)
+    db.refresh(user)
+
+    record = db.query(DailyRecord).one()
+    assert record.result == "success"
+    assert record.payback_amount == 1000
+    assert record.challenge_id == challenge.id
+    assert user.credit_balance == 1000
+    assert db.query(CreditLedger).filter_by(reason="payback").one().delta == 1000
+
+
+def test_failure_pays_back_nothing(db, user):
+    from app.credits import start_challenge
+    from app.models import CreditLedger
+
+    day = study_day(now_utc()) - timedelta(days=1)
+    start_challenge(db, user, "challenge_30d", "iap", day)
+    db.commit()
     add_session(db, user, day, 10)
 
     settle_day(db, day)
     db.refresh(user)
-    assert user.pass_tickets == 1
-    assert user.streak_count == 3
-    assert db.query(DailyRecord).one().result == "passed"
+
+    assert db.query(DailyRecord).one().payback_amount == 0
+    assert user.credit_balance == 0
+    assert db.query(CreditLedger).filter_by(reason="payback").count() == 0
 
 
-def test_shortfall_without_tickets_breaks_the_streak(db, user):
+def test_success_without_a_challenge_pays_nothing_but_keeps_streak(db, user):
+    day = study_day(now_utc()) - timedelta(days=1)
+    add_session(db, user, day, 70)
+
+    settle_day(db, day)
+    db.refresh(user)
+
+    assert db.query(DailyRecord).one().payback_amount == 0
+    assert db.query(DailyRecord).one().challenge_id is None
+    assert user.credit_balance == 0
+    assert user.streak_count == 4
+
+
+def test_challenge_closes_with_a_bonus_on_a_perfect_run(db, user):
+    from app.credits import start_challenge
+    from app.models import Challenge, CreditLedger
+
+    start = study_day(now_utc()) - timedelta(days=7)
+    challenge = start_challenge(db, user, "challenge_7d", "iap", start)
+    challenge.completion_bonus = 500       # 7일권엔 원래 보너스가 없다. 지급 경로만 검증한다
+    db.commit()
+
+    for offset in range(7):
+        day = start + timedelta(days=offset)
+        add_session(db, user, day, 70)
+        settle_day(db, day)
+
+    db.refresh(challenge)
+    db.refresh(user)
+    assert challenge.status == "completed"
+    assert user.credit_balance == 7 * 1000 + 500
+    assert db.query(CreditLedger).filter_by(reason="bonus").one().delta == 500
+
+
+def test_a_single_miss_forfeits_the_completion_bonus(db, user):
+    from app.credits import start_challenge
+    from app.models import Challenge, CreditLedger
+
+    start = study_day(now_utc()) - timedelta(days=7)
+    challenge = start_challenge(db, user, "challenge_7d", "iap", start)
+    challenge.completion_bonus = 500
+    db.commit()
+
+    for offset in range(7):
+        day = start + timedelta(days=offset)
+        add_session(db, user, day, 10 if offset == 3 else 70)
+        settle_day(db, day)
+
+    db.refresh(challenge)
+    db.refresh(user)
+    assert challenge.status == "completed"
+    assert db.query(CreditLedger).filter_by(reason="bonus").count() == 0
+    assert user.credit_balance == 6 * 1000
+
+
+def test_shortfall_breaks_the_streak(db, user):
     day = study_day(now_utc()) - timedelta(days=1)
     add_session(db, user, day, 10)
 
@@ -3259,6 +3696,7 @@ def test_shortfall_without_tickets_breaks_the_streak(db, user):
     record = db.query(DailyRecord).one()
     assert record.result == "failed"
     assert record.streak_snapshot == 0
+    assert record.payback_amount == 0
 
 
 def test_abandoned_sessions_contribute_nothing(db, user):
@@ -3317,7 +3755,7 @@ from datetime import date as Date
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.credits import active_challenge, move
 from app.domain import settle_outcome
 from app.models import DailyRecord, StudySession, User
 from app.time_utils import day_bounds, now_utc
@@ -3328,7 +3766,7 @@ logger = logging.getLogger(__name__)
 def settle_day(db: Session, day: Date) -> int:
     """day의 daily_record를 유저마다 하나씩 만든다. 이미 있으면 건너뛴다.
 
-    그룹과 무관하다 — 목표·streak·패스권이 전부 유저 단위이기 때문이다.
+    그룹과 무관하다 — 목표·streak·크레딧이 전부 유저 단위이기 때문이다.
     """
     start, end = day_bounds(day)
 
@@ -3348,21 +3786,29 @@ def settle_day(db: Session, day: Date) -> int:
         if user.id in already:
             continue
 
+        challenge = active_challenge(db, user.id)
         total = int(minutes.get(user.id) or 0)
         outcome = settle_outcome(
-            total=total, goal=user.daily_goal_minutes,
-            tickets=user.pass_tickets, streak=user.streak_count,
-            defense_cost=settings.tickets_for_defense,
+            total=total, goal=user.daily_goal_minutes, streak=user.streak_count,
+            daily_payback=challenge.daily_payback if challenge else 0,
         )
-        user.pass_tickets -= outcome.tickets_used
         user.streak_count = outcome.new_streak
 
-        db.add(DailyRecord(
+        record = DailyRecord(
             user_id=user.id, date=day, total_minutes=total,
             goal_minutes=user.daily_goal_minutes, result=outcome.result,
-            pass_tickets_used=outcome.tickets_used,
+            challenge_id=challenge.id if challenge else None,
+            payback_amount=outcome.payback,
             streak_snapshot=outcome.new_streak, settled_at=now_utc(),
-        ))
+        )
+        db.add(record)
+        db.flush()
+
+        if outcome.payback:
+            move(db, user, outcome.payback, "payback", record.id)
+
+        if challenge is not None and day >= challenge.ends_on:
+            _close_challenge(db, user, challenge)
 
         if user.pending_goal_minutes is not None:
             user.daily_goal_minutes = user.pending_goal_minutes
@@ -3373,14 +3819,32 @@ def settle_day(db: Session, day: Date) -> int:
     db.commit()
     logger.info("정산 완료 day=%s records=%d", day, created)
     return created
+
+
+def _close_challenge(db: Session, user: User, challenge) -> None:
+    """챌린지를 닫는다. 전일 달성이면 완주 보너스를 얹는다.
+
+    보너스는 `paid_with == "iap"`인 챌린지에만 붙어 있다(credits.start_challenge).
+    크레딧 참가에도 주면 완주자가 크레딧을 무한 증식시킨다.
+    """
+    challenge.status = "completed"
+    if not challenge.completion_bonus:
+        return
+
+    perfect = (db.query(DailyRecord)
+                 .filter(DailyRecord.challenge_id == challenge.id,
+                         DailyRecord.result == "failed")
+                 .count() == 0)
+    if perfect:
+        move(db, user, challenge.completion_bonus, "bonus", challenge.id)
 ```
 
 `server/app/batch/__init__.py`는 빈 파일이다.
 
 - [ ] **Step 7: 테스트 통과 확인**
 
-Run: `cd server && python -m pytest tests/test_settlement_rules.py tests/test_settlement.py -v`
-Expected: PASS (12 passed)
+Run: `cd server && .venv/bin/python -m pytest tests/test_settlement_rules.py tests/test_settlement.py -v`
+Expected: PASS (16 passed)
 
 - [ ] **Step 8: 커밋**
 
@@ -3393,7 +3857,8 @@ git commit -m "feat(server): 04:00 정산 배치와 목표 승격"
 
 ## Task 16: streak 복구
 
-결정 14가 말한 핵심 매출 지점이다. 복구는 패스권 **2개**를 쓰고, 정산 후 **24시간** 안에만 된다.
+복구는 크레딧 **₩2,000**을 쓰고, 정산 후 **24시간** 안에만 된다.
+하루 페이백(₩1,000)보다 비싼 것은 의도된 것이다 — 되사는 것은 그날의 성과가 아니라 연속 기록이다.
 
 **Files:**
 - Create: `server/app/routers/records.py`
@@ -3401,7 +3866,7 @@ git commit -m "feat(server): 04:00 정산 배치와 목표 승격"
 - Test: `server/tests/test_restore.py`
 
 **Interfaces:**
-- Consumes: `DailyRecord`, `User`, `settings.tickets_for_restore`, `settings.restore_window_hours`
+- Consumes: `DailyRecord`, `User`, `app.credits.move`, `settings.restore_credit_cost`, `settings.restore_window_hours`
 - Produces:
   - `GET /records/me?limit=30` → `list[DailyRecordOut]`
   - `POST /records/{record_id}/restore` → `DailyRecordOut`
@@ -3424,41 +3889,52 @@ def failed_record(client, auth, db):
     """어제 failed. 그저께는 streak 6에서 끝나 있었다."""
     user = db.query(User).one()
     user.streak_count = 0
-    user.pass_tickets = 2
+    user.credit_balance = 2000
     yesterday = study_day(now_utc()) - timedelta(days=1)
 
     db.add(DailyRecord(user_id=user.id, date=yesterday - timedelta(days=1),
                        total_minutes=90, goal_minutes=60, result="success",
-                       streak_snapshot=6, settled_at=now_utc() - timedelta(days=1)))
+                       payback_amount=1000, streak_snapshot=6,
+                       settled_at=now_utc() - timedelta(days=1)))
     record = DailyRecord(user_id=user.id, date=yesterday, total_minutes=10,
-                         goal_minutes=60, result="failed", streak_snapshot=0,
+                         goal_minutes=60, result="failed", payback_amount=0,
+                         streak_snapshot=0,
                          settled_at=now_utc() - timedelta(hours=2))
     db.add(record)
     db.commit()
     return record
 
 
-def test_restore_costs_two_tickets_and_rebuilds_the_streak(client, auth, db, failed_record):
+def test_restore_costs_credit_and_rebuilds_the_streak(client, auth, db, failed_record):
+    from app.models import CreditLedger
+
     r = client.post(f"/records/{failed_record.id}/restore", headers=auth)
     assert r.status_code == 200
     assert r.json()["result"] == "passed"
-    assert r.json()["pass_tickets_used"] == 2
 
     user = db.query(User).one()
     db.refresh(user)
-    assert user.pass_tickets == 0
+    assert user.credit_balance == 0
     assert user.streak_count == 7        # 전날 스냅샷 6 + 1
+    assert db.query(CreditLedger).filter_by(reason="restore").one().delta == -2000
 
 
-def test_restore_needs_two_tickets(client, auth, db, failed_record):
+def test_restore_does_not_refund_that_days_payback(client, auth, db, failed_record):
+    """되사는 것은 연속 기록이지 그날의 성과가 아니다."""
+    client.post(f"/records/{failed_record.id}/restore", headers=auth)
+    db.refresh(failed_record)
+    assert failed_record.payback_amount == 0
+
+
+def test_restore_needs_enough_credit(client, auth, db, failed_record):
     user = db.query(User).one()
-    user.pass_tickets = 1
+    user.credit_balance = 1000
     db.commit()
 
     r = client.post(f"/records/{failed_record.id}/restore", headers=auth)
     assert r.status_code == 402
     db.refresh(user)
-    assert user.pass_tickets == 1
+    assert user.credit_balance == 1000
 
 
 def test_restore_expires_after_24_hours(client, auth, db, failed_record):
@@ -3477,7 +3953,7 @@ def test_only_failed_records_can_be_restored(client, auth, db, failed_record):
 
 def test_cannot_restore_twice(client, auth, db, failed_record):
     user = db.query(User).one()
-    user.pass_tickets = 4
+    user.credit_balance = 4000
     db.commit()
 
     client.post(f"/records/{failed_record.id}/restore", headers=auth)
@@ -3522,7 +3998,7 @@ class DailyRecordOut(BaseModel):
     total_minutes: int
     goal_minutes: int
     result: str
-    pass_tickets_used: int
+    payback_amount: int
     streak_snapshot: int
     settled_at: datetime
 
@@ -3540,6 +4016,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.credits import move
 from app.db import get_db
 from app.models import DailyRecord, User
 from app.schemas import DailyRecordOut
@@ -3565,7 +4042,7 @@ def restore_streak(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DailyRecord:
-    """끊긴 streak를 되산다. 패스권 2개, 정산 후 24시간 이내."""
+    """끊긴 streak를 되산다. 크레딧 2,000원, 정산 후 24시간 이내."""
     record = (db.query(DailyRecord)
                 .filter_by(id=record_id, user_id=user.id).one_or_none())
     if record is None:
@@ -3577,21 +4054,21 @@ def restore_streak(
     if now_utc() > deadline:
         raise HTTPException(status.HTTP_409_CONFLICT, "복구 가능 시간이 지났습니다")
 
-    cost = settings.tickets_for_restore
-    if user.pass_tickets < cost:
+    cost = settings.restore_credit_cost
+    if user.credit_balance < cost:
         raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED,
-                            f"패스권 {cost}개가 필요합니다")
+                            f"크레딧 {cost}원이 필요합니다")
 
     previous = (db.query(DailyRecord)
                   .filter(DailyRecord.user_id == user.id,
                           DailyRecord.date < record.date)
                   .order_by(DailyRecord.date.desc()).first())
 
-    user.pass_tickets -= cost
+    move(db, user, -cost, "restore", record.id)
     user.streak_count = (previous.streak_snapshot if previous else 0) + 1
     record.result = "passed"
-    record.pass_tickets_used = cost
     record.streak_snapshot = user.streak_count
+    # payback_amount 는 0으로 남긴다 — 되사는 것은 연속 기록이지 그날의 성과가 아니다
     db.commit()
     return record
 ```
@@ -3600,8 +4077,8 @@ def restore_streak(
 
 - [ ] **Step 5: 테스트 통과 확인**
 
-Run: `cd server && python -m pytest tests/test_restore.py -v`
-Expected: PASS (7 passed)
+Run: `cd server && .venv/bin/python -m pytest tests/test_restore.py -v`
+Expected: PASS (8 passed)
 
 - [ ] **Step 6: 커밋**
 
@@ -4043,6 +4520,7 @@ def test_nudge_targets_yesterdays_failures_only(db, sent):
     assert nudge_restore(db, yesterday) == 1
     assert len(sent) == 1
     assert sent[0].token == failed.expo_push_token
+    assert "2,000" in sent[0].body
 
 
 def test_nudge_sends_nothing_when_nobody_failed(db, sent):
@@ -4089,6 +4567,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import notifications
+from app.config import settings
 from app.models import DailyRecord, StudySession, User
 from app.notifications import Notification
 from app.time_utils import day_bounds, now_utc, study_day
@@ -4138,8 +4617,9 @@ def nudge_restore(db: Session, day: Date) -> int:
     pushes = [
         Notification(
             token=user.expo_push_token,
-            title="연속 기록이 끊겼어요",
-            body="오늘 안에 패스권으로 어제 기록을 되살릴 수 있습니다.",
+            title="어제 페이백을 놓쳤어요",
+            body=(f"연속 기록도 끊겼습니다. 오늘 안에 크레딧 "
+                  f"{settings.restore_credit_cost:,}원으로 되살릴 수 있어요."),
         )
         for user, _ in rows
     ]
