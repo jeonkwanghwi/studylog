@@ -39,7 +39,9 @@ def test_invalid_social_token_is_rejected(client):
 
 
 def test_me_requires_a_token(client):
-    assert client.get("/users/me").status_code == 403
+    # 자격증명 자체가 없으면 401이다. 403은 "인증은 됐는데 권한이 없다"는 뜻이라
+    # 로그인하지 않은 요청에는 맞지 않는다.
+    assert client.get("/users/me").status_code == 401
 
 
 def test_me_returns_the_logged_in_user(client):

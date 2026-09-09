@@ -10,7 +10,7 @@ from app.db import get_db
 from app.models import User
 from app.time_utils import now_utc
 
-bearer = HTTPBearer(auto_error=False)
+bearer = HTTPBearer()
 
 
 def create_access_token(user_id: str) -> str:
@@ -19,11 +19,9 @@ def create_access_token(user_id: str) -> str:
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    credentials: HTTPAuthorizationCredentials = Depends(bearer),
     db: Session = Depends(get_db),
 ) -> User:
-    if credentials is None:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "not authenticated")
     try:
         payload = jwt.decode(credentials.credentials, settings.jwt_secret,
                              algorithms=["HS256"])
