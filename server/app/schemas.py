@@ -52,3 +52,19 @@ class GoalIn(BaseModel):
 
 class PushTokenIn(BaseModel):
     token: str = Field(min_length=1, max_length=255)
+
+
+class GroupCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+
+
+class GroupJoinIn(BaseModel):
+    invite_code: str = Field(min_length=6, max_length=6)
+
+
+class GroupOut(BaseModel):
+    id: str
+    name: str
+    invite_code: str
+
+    model_config = {"from_attributes": True}
