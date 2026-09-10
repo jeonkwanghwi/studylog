@@ -6,7 +6,7 @@
 
 **Architecture:** Expo Router의 파일 기반 라우팅으로 4개 탭(홈·피드·기록·설정)과 3개 모달(촬영·이의제기·복구)을 구성한다. 서버 상태는 전부 TanStack Query가 들고, 전역 상태 관리자는 두지 않는다 — 이 앱이 다루는 상태는 사실상 전부 서버 상태다. 토큰만 expo-secure-store에 남는다. 시간·판정·가격은 앱이 계산하지 않고 서버가 준 값을 표시만 한다.
 
-**Tech Stack:** Expo SDK 52 / TypeScript / Expo Router / TanStack Query v5 / expo-camera / expo-secure-store / expo-notifications / react-native-purchases (RevenueCat) / Jest + React Native Testing Library / MSW (API 모킹)
+**Tech Stack:** Expo SDK 52 / TypeScript / Expo Router / TanStack Query v5 / expo-camera / expo-secure-store / expo-notifications / react-native-purchases (RevenueCat) / IBM Plex Sans KR · IBM Plex Mono / Jest + React Native Testing Library
 
 **Spec:** [`docs/superpowers/specs/2026-09-09-studylog-v1-design.md`](../specs/2026-09-09-studylog-v1-design.md) — 특히 §9.1(앱 설계)와 §4(핵심 흐름)
 
@@ -25,6 +25,38 @@
 - 하루 경계는 **04:00 KST**다. "오늘"을 계산할 때 자정 기준으로 자르지 않는다
 - 401 응답은 토큰 만료로 간주하고 로그인 화면으로 보낸다. 403·402·409는 각각 다른 안내 문구를 쓴다
 - API 기본 주소는 `EXPO_PUBLIC_API_URL` 환경변수로 주입한다. 소스에 도메인을 박지 않는다
+
+### 스타일은 전부 `src/design` 에서 온다
+
+**Task 3 이후의 어떤 화면도 색·간격·글자 크기를 직접 쓰지 않는다.** Task 4~16의 코드
+블록에는 값이 직접 적혀 있는데, 그것은 구조를 보여주기 위한 것이고 **아래 대응표대로
+치환해서 구현한다.** 값을 그대로 두면 열 화면 뒤에는 되돌릴 수 없다.
+
+| 코드 블록의 값 | 치환 |
+|---|---|
+| `#18181b`, `#000` (배경) | `color.ink` |
+| `#fff` (잉크 위 글자) | `color.paper` |
+| `#f4f4f5` (면) | `<Sheet>` 로 교체 |
+| `#e4e4e7`, `#ddd`, `#d4d4d8` (선) | `color.line` |
+| `#52525b` | `<T kind="muted">` |
+| `#71717a`, `#a1a1aa` | `<T variant="small" kind="muted">` |
+| `#dc2626` (위험·손실) | `color.stamp` |
+| `#2563eb` (링크성 액션) | `<Button tone="quiet">` |
+| `#16a34a` (성공) | 쓰지 않는다. 달성은 `color.highlight` 마크로 표현한다 |
+| `padding: 14/16/18`, `gap: 8/12/16` | `space.sm` `space.md` `space.lg` |
+| `borderRadius: 10/12/14/16` | `radius.sheet` (면) · `radius.button` (버튼) |
+| `fontSize: 34/44` | `<T variant="display">` |
+| `fontSize: 22/24`, `fontWeight: "700"` | `<T variant="title">` |
+| `fontSize: 13`, `fontSize: 12` | `<T variant="small">` |
+| 금액을 그리는 모든 `<Text>` | `<T variant="amount">` — 자릿수가 세로로 맞아야 한다 |
+| `<Text>` · `<Pressable>` 직접 사용 | `<T>` · `<Button>` |
+
+**홈의 가장 큰 숫자는 "돌려받은 돈"이 아니라 "아직 못 받은 돈"이다.** 같은 데이터를
+뒤집는 것만으로 화면이 제품의 논지(손실회피)를 말한다. 보상 프레임으로 크게 띄우면
+그냥 또 하나의 적립 앱이 된다. `CreditMeter` 는 그렇게 다시 만든다.
+
+**움직이는 것은 하나뿐이다** — 인증이 통과되면 오늘 눈금이 칠해진다. 화면 진입
+페이드, 카드 호버, 순차 등장은 넣지 않는다.
 
 ---
 
@@ -413,7 +445,369 @@ git commit -m "feat(app): 시간·금액 순수 함수"
 
 ---
 
-## Task 3: API 클라이언트와 타입
+## Task 3: 디자인 시스템
+
+**이 태스크가 나머지 화면의 외관을 전부 결정한다.** 뒤에서 화면을 만들 때
+색·간격·글자 크기를 직접 쓰지 않고 여기서 만든 토큰만 쓴다. 인라인으로 값을
+박기 시작하면 열 화면 뒤에는 되돌릴 수 없다.
+
+### 방향
+
+이 앱은 생산성 앱이 아니라 **매일 돈이 들어오거나 사라지는 걸 보는 앱**이다.
+그래서 기준을 습관 트래커가 아니라 **통장과 D-day**에 잡는다 — 한국 공부 문화에서
+가장 강한 시각 어휘 두 개이고, 챌린지는 문자 그대로 날짜 카운트다운 + 금액 정산이다.
+
+**가장 큰 숫자는 "얼마 받았나"가 아니라 "아직 못 받았나"다.** 같은 데이터를 뒤집는
+것만으로 화면이 제품의 논지(손실회피)를 말하게 된다. 보상 프레임으로 크게 띄우면
+그냥 또 하나의 적립 앱이 된다.
+
+**대담함은 눈금 띠 하나에만 쓴다.** 챌린지 일수만큼 눈금이 있고, 확보한 날은
+형광으로 칠해지고 놓친 날은 인주색으로 그어진다. 나머지 화면은 전부 조용하게 둔다.
+카드 남발·모든 요소 동일 라운드·부드러운 회색 그림자는 쓰지 않는다.
+
+**Files:**
+- Create: `app-client/src/design/tokens.ts`, `app-client/src/design/Text.tsx`, `app-client/src/design/Button.tsx`, `app-client/src/design/Sheet.tsx`, `app-client/src/design/TickStrip.tsx`
+- Modify: `app-client/app/_layout.tsx` (폰트 로딩)
+- Test: `app-client/__tests__/design.test.tsx`
+
+**Interfaces:**
+- Consumes: `expo-font`, `@expo-google-fonts/ibm-plex-sans-kr`, `@expo-google-fonts/ibm-plex-mono`
+- Produces:
+  - `color`, `space`, `radius`, `type` — 토큰 객체
+  - `<T variant kind>` — 텍스트. `variant`: `display | title | body | small | amount`
+  - `<Button label onPress tone />` — `tone`: `primary | quiet | danger`
+  - `<Sheet>` — 종이 한 장
+  - `<TickStrip days marks />` — `marks`: `("secured" | "missed" | "pending")[]`
+
+- [ ] **Step 1: 폰트 설치**
+
+```bash
+cd app-client
+npx expo install expo-font @expo-google-fonts/ibm-plex-sans-kr @expo-google-fonts/ibm-plex-mono
+```
+
+IBM Plex Sans KR을 쓰는 이유는 한글을 제대로 지원하면서 기관 문서 같은 질감이
+있기 때문이다. Pretendard는 지금 한국 앱의 사실상 기본값이라 쓰지 않는다.
+
+- [ ] **Step 2: 실패하는 테스트 작성**
+
+`app-client/__tests__/design.test.tsx`:
+
+```tsx
+import { render, screen } from "@testing-library/react-native";
+
+import { color, space, type } from "../src/design/tokens";
+import { TickStrip } from "../src/design/TickStrip";
+
+describe("토큰", () => {
+  it("바탕은 크림색이 아니라 회녹색이다", () => {
+    expect(color.ground).toBe("#E4E8E2");
+  });
+
+  it("잉크는 무채색 근사흑이 아니라 색을 가진다", () => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.ink.slice(i, i + 2), 16));
+    expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeGreaterThan(8);
+  });
+
+  it("간격은 4의 배수 척도다", () => {
+    expect(Object.values(space).every((v) => v % 4 === 0)).toBe(true);
+  });
+
+  it("금액은 자릿수를 맞추기 위해 고정폭을 쓴다", () => {
+    expect(type.amount.fontFamily).toMatch(/Mono/);
+  });
+
+  it("본문은 고정폭을 쓰지 않는다", () => {
+    expect(type.body.fontFamily).not.toMatch(/Mono/);
+  });
+});
+
+describe("눈금 띠", () => {
+  it("일수만큼 눈금을 그린다", () => {
+    render(<TickStrip days={7} marks={Array(7).fill("pending")} />);
+    expect(screen.getAllByTestId("tick")).toHaveLength(7);
+  });
+
+  it("확보한 날은 형광으로 칠한다", () => {
+    render(
+      <TickStrip days={3} marks={["secured", "missed", "pending"]} />
+    );
+    const ticks = screen.getAllByTestId("tick");
+    expect(ticks[0].props.style.backgroundColor).toBe(color.highlight);
+  });
+
+  it("놓친 날은 인주색으로 표시한다", () => {
+    render(<TickStrip days={3} marks={["secured", "missed", "pending"]} />);
+    const ticks = screen.getAllByTestId("tick");
+    expect(ticks[1].props.style.backgroundColor).toBe(color.stamp);
+  });
+
+  it("아직 오지 않은 날은 비워둔다", () => {
+    render(<TickStrip days={3} marks={["secured", "missed", "pending"]} />);
+    const ticks = screen.getAllByTestId("tick");
+    expect(ticks[2].props.style.backgroundColor).toBe("transparent");
+  });
+
+  it("marks 가 days 보다 짧으면 나머지를 pending 으로 채운다", () => {
+    render(<TickStrip days={5} marks={["secured"]} />);
+    expect(screen.getAllByTestId("tick")).toHaveLength(5);
+  });
+});
+```
+
+- [ ] **Step 3: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/design.test.tsx`
+Expected: FAIL — `Cannot find module '../src/design/tokens'`
+
+- [ ] **Step 4: 토큰 작성**
+
+`app-client/src/design/tokens.ts`:
+
+```ts
+/**
+ * 시험지와 통장에서 가져온 팔레트.
+ *
+ * 크림 바탕 + 세리프 + 테라코타, 근사흑 바탕 + 형광 악센트는 지금 생성형
+ * 디자인의 기본값이라 피했다. 여기 색은 전부 이 제품의 소재에서 나온다 —
+ * 시험지의 회녹색, 잉크, 도장의 인주, 스터디 플래너의 형광펜.
+ */
+export const color = {
+  ground: "#E4E8E2",      // 시험지 회녹색
+  paper: "#F6F8F4",       // 시트·행
+  ink: "#16241E",         // 녹빛 도는 진한 잉크. 무채색 근사흑이 아니다
+  inkMuted: "#5B6B63",
+  stamp: "#A3241C",       // 인주 — 잃은 돈, 위험
+  highlight: "#EBE04A",   // 형광펜 — 확보한 날의 표시
+  line: "#C9D1C7",
+} as const;
+
+export const space = {
+  xs: 4, sm: 8, md: 16, lg: 24, xl: 40, xxl: 64,
+} as const;
+
+export const radius = {
+  // 요소마다 역할이 다르므로 반경도 다르다. 전부 같은 값으로 두면
+  // 화면이 무엇이 중요한지 말하지 않게 된다.
+  tick: 2, sheet: 6, button: 8, pill: 999,
+} as const;
+
+const SANS = "IBMPlexSansKR_400Regular";
+const SANS_BOLD = "IBMPlexSansKR_700Bold";
+const MONO = "IBMPlexMono_600SemiBold";
+
+export const type = {
+  // 금액과 원장 행만 고정폭이다. 장식이 아니라 자릿수를 세로로 맞추기 위해서다.
+  display: { fontFamily: MONO, fontSize: 44, letterSpacing: -1.5 },
+  amount: { fontFamily: MONO, fontSize: 17 },
+  title: { fontFamily: SANS_BOLD, fontSize: 20 },
+  body: { fontFamily: SANS, fontSize: 15, lineHeight: 23 },
+  small: { fontFamily: SANS, fontSize: 13, lineHeight: 19 },
+} as const;
+
+export const fonts = { SANS, SANS_BOLD, MONO };
+```
+
+- [ ] **Step 5: 원시 컴포넌트 작성**
+
+`app-client/src/design/Text.tsx`:
+
+```tsx
+import { Text as RNText, type TextProps } from "react-native";
+
+import { color, type } from "./tokens";
+
+type Variant = keyof typeof type;
+type Kind = "ink" | "muted" | "stamp";
+
+const TONE: Record<Kind, string> = {
+  ink: color.ink,
+  muted: color.inkMuted,
+  stamp: color.stamp,
+};
+
+export function T({
+  variant = "body",
+  kind = "ink",
+  style,
+  ...rest
+}: TextProps & { variant?: Variant; kind?: Kind }) {
+  return <RNText style={[type[variant], { color: TONE[kind] }, style]} {...rest} />;
+}
+```
+
+`app-client/src/design/Button.tsx`:
+
+```tsx
+import { Pressable, type PressableProps } from "react-native";
+
+import { T } from "./Text";
+import { color, radius, space } from "./tokens";
+
+type Tone = "primary" | "quiet" | "danger";
+
+export function Button({
+  label,
+  tone = "primary",
+  disabled,
+  ...rest
+}: PressableProps & { label: string; tone?: Tone }) {
+  const filled = tone === "primary";
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled}
+      style={({ pressed }) => ({
+        backgroundColor: filled ? color.ink : "transparent",
+        borderWidth: filled ? 0 : 1,
+        borderColor: tone === "danger" ? color.stamp : color.line,
+        borderRadius: radius.button,
+        paddingVertical: space.md,
+        paddingHorizontal: space.lg,
+        opacity: disabled ? 0.4 : pressed ? 0.75 : 1,
+      })}
+      {...rest}
+    >
+      <T
+        variant="body"
+        kind={filled ? "ink" : tone === "danger" ? "stamp" : "ink"}
+        style={{
+          textAlign: "center",
+          color: filled ? color.paper : undefined,
+        }}
+      >
+        {label}
+      </T>
+    </Pressable>
+  );
+}
+```
+
+`app-client/src/design/Sheet.tsx`:
+
+```tsx
+import { View, type ViewProps } from "react-native";
+
+import { color, radius, space } from "./tokens";
+
+/** 종이 한 장. 그림자를 쓰지 않는다 — 종이는 떠 있지 않다. */
+export function Sheet({ style, ...rest }: ViewProps) {
+  return (
+    <View
+      style={[
+        {
+          backgroundColor: color.paper,
+          borderRadius: radius.sheet,
+          borderWidth: 1,
+          borderColor: color.line,
+          padding: space.md,
+        },
+        style,
+      ]}
+      {...rest}
+    />
+  );
+}
+```
+
+`app-client/src/design/TickStrip.tsx`:
+
+```tsx
+import { View } from "react-native";
+
+import { color, radius, space } from "./tokens";
+
+export type Mark = "secured" | "missed" | "pending";
+
+const FILL: Record<Mark, string> = {
+  secured: color.highlight,
+  missed: color.stamp,
+  pending: "transparent",
+};
+
+/**
+ * 챌린지 일수를 눈금으로 편다. 이 앱에서 유일하게 대담한 요소다 —
+ * D-day 카운터와 통장 정리가 한 줄에 겹친 것. 확보한 날은 형광으로 칠하고
+ * 놓친 날은 인주색으로 남긴다.
+ */
+export function TickStrip({ days, marks }: { days: number; marks: Mark[] }) {
+  const filled: Mark[] = Array.from(
+    { length: days },
+    (_, i) => marks[i] ?? "pending"
+  );
+
+  return (
+    <View style={{ flexDirection: "row", gap: 3, alignItems: "flex-end" }}>
+      {filled.map((mark, index) => (
+        <View
+          key={index}
+          testID="tick"
+          style={{
+            flex: 1,
+            height: mark === "pending" ? space.md : space.lg,
+            backgroundColor: FILL[mark],
+            borderWidth: 1,
+            borderColor: mark === "pending" ? color.line : "transparent",
+            borderRadius: radius.tick,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+```
+
+- [ ] **Step 6: 폰트 로딩 연결**
+
+`app-client/app/_layout.tsx` 에서 폰트를 불러온 뒤에만 화면을 그린다:
+
+```tsx
+import {
+  IBMPlexSansKR_400Regular,
+  IBMPlexSansKR_700Bold,
+  useFonts,
+} from "@expo-google-fonts/ibm-plex-sans-kr";
+import { IBMPlexMono_600SemiBold } from "@expo-google-fonts/ibm-plex-mono";
+
+  const [loaded] = useFonts({
+    IBMPlexSansKR_400Regular,
+    IBMPlexSansKR_700Bold,
+    IBMPlexMono_600SemiBold,
+  });
+  if (!loaded) return null;
+```
+
+그리고 `<Stack screenOptions>` 에 `contentStyle: { backgroundColor: color.ground }` 를 넣어
+모든 화면의 바탕을 통일한다.
+
+`app-client/jest.setup.js` 에 폰트 훅 모킹을 추가한다:
+
+```js
+jest.mock("@expo-google-fonts/ibm-plex-sans-kr", () => ({
+  useFonts: () => [true],
+  IBMPlexSansKR_400Regular: "IBMPlexSansKR_400Regular",
+  IBMPlexSansKR_700Bold: "IBMPlexSansKR_700Bold",
+}));
+jest.mock("@expo-google-fonts/ibm-plex-mono", () => ({
+  IBMPlexMono_600SemiBold: "IBMPlexMono_600SemiBold",
+}));
+```
+
+- [ ] **Step 7: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (21 passed)
+
+- [ ] **Step 8: 커밋**
+
+```bash
+git add app-client/src/design app-client/app/_layout.tsx app-client/jest.setup.js app-client/package.json app-client/__tests__/design.test.tsx
+git commit -m "feat(app): 디자인 시스템 — 시험지·통장에서 가져온 토큰과 눈금 띠"
+```
+
+---
+
+## Task 4: API 클라이언트와 타입
 
 **Files:**
 - Create: `app-client/src/api/types.ts`, `app-client/src/api/client.ts`, `app-client/src/auth/storage.ts`
@@ -709,7 +1103,7 @@ git commit -m "feat(app): API 클라이언트와 서버 타입"
 
 ---
 
-## Task 4: 인증 게이트와 로그인
+## Task 5: 인증 게이트와 로그인
 
 **Files:**
 - Create: `app-client/src/auth/useAuth.ts`, `app-client/src/api/hooks.ts`, `app-client/app/login.tsx`
@@ -954,7 +1348,7 @@ export default function Login() {
   async function handle(provider: "apple" | "google") {
     setBusy(true);
     try {
-      // TODO(Task 14): expo-apple-authentication / expo-auth-session 으로 교체.
+      // TODO(Task 15): expo-apple-authentication / expo-auth-session 으로 교체.
       // 그전까지는 개발용 토큰으로 서버에 붙는다.
       const idToken = process.env.EXPO_PUBLIC_DEV_ID_TOKEN ?? "dev";
       await signIn(provider, idToken, "광휘");
@@ -1026,7 +1420,7 @@ git commit -m "feat(app): 인증 게이트와 로그인"
 
 ---
 
-## Task 5: 탭 레이아웃과 홈
+## Task 6: 탭 레이아웃과 홈
 
 홈은 이 앱에서 유일하게 매일 열리는 화면이다. **적립 크레딧과 남은 일수를 최상단에
 상시 노출**하는 것이 동기부여의 전부다 — 돈이 차오르는 걸 보여주는 게 이 제품이다.
@@ -1390,7 +1784,7 @@ git commit -m "feat(app): 탭 레이아웃과 홈 화면"
 
 ---
 
-## Task 6: 촬영과 시작 샷
+## Task 7: 촬영과 시작 샷
 
 **Files:**
 - Create: `app-client/app/capture.tsx`, `app-client/src/api/upload.ts`
@@ -1709,13 +2103,13 @@ git commit -m "feat(app): 촬영과 시작 샷 업로드"
 
 ---
 
-## Task 7: 종료 샷의 실패 복구
+## Task 8: 종료 샷의 실패 복구
 
 **이 앱에서 가장 위험한 화면이다.** 시작 샷이 실패하면 아무 일도 안 일어난 것이라
 안전하다. 그러나 **종료 샷이 실패했는데 유저가 "끝냈다"고 믿으면 세션이 통째로
 날아간다** — 4시간 뒤 0분으로 회수되고, 그날 페이백도 사라진다.
 
-Task 6의 `error` 단계는 유저가 닫아버릴 수 있다. 종료 샷에서는 그러면 안 된다.
+Task 7의 `error` 단계는 유저가 닫아버릴 수 있다. 종료 샷에서는 그러면 안 된다.
 
 **Files:**
 - Modify: `app-client/app/capture.tsx`
@@ -1785,7 +2179,7 @@ describe("종료 샷 실패", () => {
   });
 
   it("시작 샷 실패는 그냥 닫아도 된다", async () => {
-    // 이 케이스는 Task 6 테스트가 덮는다. 여기서는 종료 샷만 다룬다.
+    // 이 케이스는 Task 7 테스트가 덮는다. 여기서는 종료 샷만 다룬다.
     expect(true).toBe(true);
   });
 
@@ -1899,7 +2293,7 @@ git commit -m "feat(app): 종료 샷 실패는 닫히지 않는다"
 
 ---
 
-## Task 8: 이의제기
+## Task 9: 이의제기
 
 **Files:**
 - Create: `app-client/app/appeal/[photoId].tsx`
@@ -2135,7 +2529,7 @@ git commit -m "feat(app): 이의제기 모달"
 
 ---
 
-## Task 9: 챌린지 선택과 결제
+## Task 10: 챌린지 선택과 결제
 
 **Files:**
 - Create: `app-client/app/challenge/select.tsx`, `app-client/src/purchases/revenuecat.ts`
@@ -2419,7 +2813,7 @@ git commit -m "feat(app): 챌린지 선택과 결제"
 
 ---
 
-## Task 10: 그룹
+## Task 11: 그룹
 
 **Files:**
 - Create: `app-client/app/groups/index.tsx`
@@ -2668,7 +3062,7 @@ git commit -m "feat(app): 그룹 목록·생성·초대코드 참여"
 
 ---
 
-## Task 11: 피드
+## Task 12: 피드
 
 **Files:**
 - Create: `app-client/app/(tabs)/feed.tsx`, `app-client/src/components/PhotoGrid.tsx`
@@ -2896,7 +3290,7 @@ git commit -m "feat(app): 그룹 피드"
 
 ---
 
-## Task 12: 기록과 복구
+## Task 13: 기록과 복구
 
 **Files:**
 - Create: `app-client/app/(tabs)/records.tsx`, `app-client/app/restore/[recordId].tsx`
@@ -3224,7 +3618,7 @@ git commit -m "feat(app): 기록 목록과 streak 복구"
 
 ---
 
-## Task 13: 설정과 푸시 등록
+## Task 14: 설정과 푸시 등록
 
 **Files:**
 - Create: `app-client/app/(tabs)/settings.tsx`, `app-client/src/notifications/register.ts`, `app-client/app/onboarding.tsx`
@@ -3470,9 +3864,9 @@ git commit -m "feat(app): 설정·온보딩·푸시 등록"
 
 ---
 
-## Task 14: Apple / Google 로그인 실연동
+## Task 15: Apple / Google 로그인 실연동
 
-Task 4의 로그인은 `EXPO_PUBLIC_DEV_ID_TOKEN` 을 그대로 서버에 보내는 개발용
+Task 5의 로그인은 `EXPO_PUBLIC_DEV_ID_TOKEN` 을 그대로 서버에 보내는 개발용
 우회다. 서버는 그 토큰을 Apple·Google JWKS로 **실제로 검증**하므로, 진짜
 id_token 을 받아오지 않으면 실기기에서 로그인이 되지 않는다.
 
@@ -3658,7 +4052,7 @@ git commit -m "feat(app): Apple/Google 로그인 실연동"
 
 ---
 
-## Task 15: 마감 — 오류 처리, 세션 복원, 앱 리소스
+## Task 16: 마감 — 오류 처리, 세션 복원, 앱 리소스
 
 **Files:**
 - Create: `app-client/app/+not-found.tsx`, `app-client/src/components/ErrorBoundary.tsx`, `app-client/assets/README.md`
@@ -3905,17 +4299,18 @@ git commit -m "feat(app): 오류 처리·세션 복원·앱 리소스"
 
 | 스펙 §9.1 | 태스크 |
 |---|---|
-| 로그인 / 목표 설정 | 4, 13, 14 |
-| 홈 | 5 |
-| 촬영 · 판정 결과 | 6, 7 |
-| 이의제기 | 8 |
-| 챌린지 선택 | 9 |
-| 피드 | 11 |
-| 그룹 | 10 |
-| 기록 · 복구 | 12 |
-| 설정 | 13 |
-| **앱이 하지 말아야 할 것 4가지** | 2·5(시간), 6(판정), 9(가격표), 9(결제) |
-| 종료 샷 실패 처리 | 7 |
+| 디자인 시스템 | 3 |
+| 로그인 / 목표 설정 | 5, 14, 15 |
+| 홈 | 6 |
+| 촬영 · 판정 결과 | 7, 8 |
+| 이의제기 | 9 |
+| 챌린지 선택 | 10 |
+| 피드 | 12 |
+| 그룹 | 11 |
+| 기록 · 복구 | 13 |
+| 설정 | 14 |
+| **앱이 하지 말아야 할 것 4가지** | 2·6(시간), 7(판정), 10(가격표), 10(결제) |
+| 종료 샷 실패 처리 | 8 |
 | 스택 | 1 |
 
 **v1 범위 밖이라 태스크가 없는 것** — 딥링크(초대는 코드 복사), 오프라인 큐,
