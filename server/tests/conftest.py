@@ -1,6 +1,8 @@
 import io
 import os
 
+os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production-use-only")
+
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image

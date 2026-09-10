@@ -2,7 +2,7 @@ import logging
 import sys
 from datetime import timedelta
 
-from app.batch.reminders import nudge_restore, remind_shortfall
+from app.batch.reminders import nudge_challenge_end, nudge_restore, remind_shortfall
 from app.batch.sessions import sweep
 from app.batch.settlement import settle_day
 from app.db import SessionLocal
@@ -14,7 +14,9 @@ def _settle(db) -> None:
 
 
 def _nudge(db) -> None:
-    nudge_restore(db, study_day(now_utc()) - timedelta(days=1))
+    day = study_day(now_utc()) - timedelta(days=1)
+    nudge_restore(db, day)
+    nudge_challenge_end(db, day)
 
 
 COMMANDS = {

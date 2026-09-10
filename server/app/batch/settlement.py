@@ -31,7 +31,7 @@ def settle_day(db: Session, day: Date) -> int:
                db.query(DailyRecord.user_id).filter(DailyRecord.date == day)}
 
     created = 0
-    for user in db.query(User).all():
+    for user in db.query(User).filter(User.created_at < end).all():
         if user.id in already:
             continue
 

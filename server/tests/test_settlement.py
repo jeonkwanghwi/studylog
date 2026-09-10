@@ -9,8 +9,11 @@ from app.time_utils import day_bounds, now_utc, study_day
 
 @pytest.fixture()
 def user(db):
+    # 가입일을 넉넉히 과거로 둔다 — 이 파일의 테스트는 최대 30일 전까지 정산한다.
+    # 기본값(지금)으로 두면 "어제"를 정산할 때 가입 전 날짜 취급을 받아 걸러진다.
     u = User(provider="apple", provider_sub="s", nickname="광휘",
-             daily_goal_minutes=60, streak_count=3, credit_balance=0)
+             daily_goal_minutes=60, streak_count=3, credit_balance=0,
+             created_at=now_utc() - timedelta(days=60))
     db.add(u)
     db.commit()
     return u
@@ -258,6 +261,30 @@ def test_pending_goal_is_promoted_after_settling(db, user):
     assert db.query(DailyRecord).one().goal_minutes == 60   # 오늘은 옛 목표로 판정
     assert user.daily_goal_minutes == 120                   # 내일부터 새 목표
     assert user.pending_goal_minutes is None
+
+
+def test_open_sessions_contribute_nothing(db, user):
+    day = study_day(now_utc()) - timedelta(days=1)
+    add_session(db, user, day, 70, status="open")
+
+    settle_day(db, day)
+    assert db.query(DailyRecord).one().total_minutes == 0
+
+
+def test_users_created_after_the_day_ended_are_not_settled(db, user):
+    """정산 대상 날짜가 끝난 뒤 가입한 유저는 그날 정산에서 제외돼야 한다.
+    포함되면 가입 전 날짜에 대해 '미인증' 기록이 생긴다."""
+    day = study_day(now_utc()) - timedelta(days=1)
+    _, end = day_bounds(day)
+    late = User(provider="apple", provider_sub="late", nickname="늦참",
+                daily_goal_minutes=60, created_at=end)
+    db.add(late)
+    db.commit()
+
+    settle_day(db, day)
+
+    assert db.query(DailyRecord).filter_by(user_id=late.id).count() == 0
+    assert db.query(DailyRecord).filter_by(user_id=user.id).count() == 1
 
 
 def test_running_twice_does_not_double_settle(db, user):

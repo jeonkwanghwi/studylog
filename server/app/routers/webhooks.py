@@ -52,6 +52,11 @@ def revenuecat(
                      event.get("app_user_id"))
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "unknown user")
 
+    charged = event.get("price", event.get("price_in_purchased_currency"))
+    if charged is not None and int(charged) != spec.price:
+        logger.error("결제 금액 불일치 user=%s product=%s 기대=%d 실제=%s",
+                     user.id, event["product_id"], spec.price, charged)
+
     if spec.price > entry_limit(db, user):
         # 상한을 넘겼지만 돈은 이미 걷혔다. 인정하고 로그만 남긴다 —
         # 여기서 거절하면 유저가 결제하고 아무것도 못 받는다.

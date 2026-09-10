@@ -1,7 +1,5 @@
 from datetime import timedelta
 
-import pytest
-
 from app.config import settings
 from app.credits import move, start_challenge
 from app.models import Challenge, CreditLedger, DailyRecord, Purchase, User

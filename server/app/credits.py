@@ -35,12 +35,16 @@ def move(db: Session, user: User, delta: int, reason: str,
     """크레딧을 움직인다. 잔액과 원장을 항상 함께 갱신한다.
 
     크레딧은 돈이다. 잔액만 바꾸고 원장을 안 남기면 차이가 났을 때 추적할 수 없다.
+
+    유저 행에 FOR UPDATE 락을 걸어 읽는다. 동시에 들어온 두 요청이 같은 잔액을
+    읽고 둘 다 통과하면 이중 지출이 된다 (SQLite에서는 no-op).
     """
-    new_balance = user.credit_balance + delta
+    locked = db.query(User).filter_by(id=user.id).with_for_update().one()
+    new_balance = locked.credit_balance + delta
     if new_balance < 0:
         raise InsufficientCredit()
 
-    user.credit_balance = new_balance
+    locked.credit_balance = new_balance
     row = CreditLedger(user_id=user.id, delta=delta, reason=reason,
                        ref_id=ref_id, balance_after=new_balance)
     db.add(row)

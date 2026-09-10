@@ -1,11 +1,14 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEV_PLACEHOLDER = "dev-secret-change-me"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "postgresql+psycopg://studylog:studylog@localhost:5432/studylog"
-    jwt_secret: str = "dev-secret-change-me"
+    jwt_secret: str
     jwt_days: int = 90
     apple_bundle_id: str = "com.studylog.app"
     google_client_id: str = ""
@@ -37,6 +40,15 @@ class Settings(BaseSettings):
 
     # 알림
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
+
+    @model_validator(mode="after")
+    def _require_real_jwt_secret(self) -> "Settings":
+        if not self.jwt_secret or self.jwt_secret == _DEV_PLACEHOLDER:
+            raise ValueError(
+                "JWT_SECRET이 비어있거나 개발용 기본값입니다. "
+                ".env에 실제 시크릿을 설정하세요."
+            )
+        return self
 
 
 settings = Settings()

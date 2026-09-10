@@ -3,8 +3,9 @@ from datetime import timedelta
 import pytest
 
 from app import notifications
-from app.batch.reminders import nudge_restore, remind_shortfall
-from app.models import DailyRecord, Photo, StudySession, User
+from app.batch.reminders import nudge_challenge_end, nudge_restore, remind_shortfall
+from app.credits import move
+from app.models import Challenge, DailyRecord, Photo, StudySession, User
 from app.time_utils import day_bounds, now_utc, study_day
 
 
@@ -53,14 +54,28 @@ def test_users_with_no_push_token_are_skipped(db, sent):
     assert sent == []
 
 
+def make_challenge(db, user, ends_on, status="completed", total_days=7,
+                   daily_payback=1000):
+    challenge = Challenge(
+        user_id=user.id, product_id="challenge_7d_1k", entry_amount=7000,
+        daily_payback=daily_payback, completion_bonus=0, total_days=total_days,
+        started_on=ends_on - timedelta(days=total_days - 1), ends_on=ends_on,
+        paid_with="iap", status=status,
+    )
+    db.add(challenge)
+    db.commit()
+    return challenge
+
+
 def test_nudge_targets_yesterdays_failures_only(db, sent):
     failed = make_user(db, "실패")
     passed = make_user(db, "방어")
     yesterday = study_day(now_utc()) - timedelta(days=1)
+    challenge = make_challenge(db, failed, yesterday, daily_payback=1500)
 
     db.add(DailyRecord(user_id=failed.id, date=yesterday, total_minutes=0,
-                       goal_minutes=60, result="failed", streak_snapshot=0,
-                       settled_at=now_utc()))
+                       goal_minutes=60, result="failed", challenge_id=challenge.id,
+                       streak_snapshot=0, settled_at=now_utc()))
     db.add(DailyRecord(user_id=passed.id, date=yesterday, total_minutes=0,
                        goal_minutes=60, result="passed", streak_snapshot=5,
                        settled_at=now_utc()))
@@ -69,12 +84,54 @@ def test_nudge_targets_yesterdays_failures_only(db, sent):
     assert nudge_restore(db, yesterday) == 1
     assert len(sent) == 1
     assert sent[0].token == failed.expo_push_token
-    assert "2,000" in sent[0].body
+    assert "1,500" in sent[0].body      # 놓친 하루치 페이백
+    assert "2,000" in sent[0].body      # 복구 비용
+
+
+def test_nudge_ignores_failures_without_a_challenge(db, sent):
+    """챌린지 없이 실패한 날은 페이백이 애초에 0원이다. '돈을 놓쳤다'고 알리면 거짓말이다."""
+    failed = make_user(db, "챌린지없음")
+    yesterday = study_day(now_utc()) - timedelta(days=1)
+
+    db.add(DailyRecord(user_id=failed.id, date=yesterday, total_minutes=0,
+                       goal_minutes=60, result="failed", streak_snapshot=0,
+                       settled_at=now_utc()))
+    db.commit()
+
+    assert nudge_restore(db, yesterday) == 0
+    assert sent == []
 
 
 def test_nudge_sends_nothing_when_nobody_failed(db, sent):
     make_user(db, "아무개")
     assert nudge_restore(db, study_day(now_utc()) - timedelta(days=1)) == 0
+    assert sent == []
+
+
+def test_nudge_challenge_end_fires_for_a_just_ended_challenge(db, sent):
+    user = make_user(db, "완주")
+    day = study_day(now_utc())
+    challenge = make_challenge(db, user, day)
+
+    db.add(DailyRecord(user_id=user.id, date=day, total_minutes=70, goal_minutes=60,
+                       result="success", challenge_id=challenge.id, payback_amount=1000,
+                       streak_snapshot=7, settled_at=now_utc()))
+    db.commit()
+    move(db, user, 500, "bonus", challenge.id)
+    db.commit()
+
+    assert nudge_challenge_end(db, day) == 1
+    assert len(sent) == 1
+    assert sent[0].token == user.expo_push_token
+    assert "1,500" in sent[0].body
+
+
+def test_nudge_challenge_end_does_not_fire_for_an_active_challenge(db, sent):
+    user = make_user(db, "진행중")
+    day = study_day(now_utc())
+    make_challenge(db, user, day, status="active")
+
+    assert nudge_challenge_end(db, day) == 0
     assert sent == []
 
 

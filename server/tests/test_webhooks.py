@@ -71,6 +71,19 @@ def test_unknown_user_asks_for_a_retry(client, auth):
     assert r.status_code == 503
 
 
+def test_over_cap_iap_purchase_still_starts_a_challenge(client, auth, db):
+    """첫 챌린지 상한은 크레딧 참가에만 건다. 웹훅이 도착했을 때는 이미 애플이
+    돈을 걷은 뒤이므로, 여기서 거절하면 유저가 결제하고 아무것도 못 받는다."""
+    user = db.query(User).one()
+    r = client.post("/webhooks/revenuecat", headers=HEADERS,
+                    json=event(user.id, product_id="challenge_14d_3k"))
+
+    assert r.status_code == 200 and r.json()["started"] is True
+    challenge = db.query(Challenge).one()
+    assert challenge.status == "active"
+    assert challenge.entry_amount == 42000
+
+
 def test_second_purchase_while_active_is_recorded_but_starts_nothing(client, auth, db):
     """활성 챌린지는 1개다. 영수증은 남기되 두 번째 챌린지를 열지 않는다."""
     user = db.query(User).one()
