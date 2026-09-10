@@ -1,0 +1,8 @@
+CRON_TZ=Asia/Seoul
+APP=/srv/studylog/server
+PY=/srv/studylog/venv/bin/python
+
+0  4 * * *  cd $APP && $PY -m app.cli settle  >> /var/log/studylog/settle.log 2>&1
+0  8 * * *  cd $APP && $PY -m app.cli nudge   >> /var/log/studylog/nudge.log 2>&1
+0 22 * * *  cd $APP && $PY -m app.cli remind  >> /var/log/studylog/remind.log 2>&1
+*/5 * * * * cd $APP && $PY -m app.cli sweep   >> /var/log/studylog/sweep.log 2>&1
