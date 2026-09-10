@@ -126,18 +126,29 @@ def test_a_restored_day_does_not_count_as_completion(db, user):
     challenge.completion_bonus = 500
     db.commit()
 
-    for offset in range(7):
+    # 3일차를 실패하고, 챌린지가 닫히기 **전에** 복구해 둔다.
+    # 복구를 마감 뒤에 하면 옛 로직("failed 없음")도 보너스를 막으므로
+    # 두 로직이 구분되지 않는다. 마감 전에 복구해야 진짜 검증이 된다.
+    for offset in range(4):
         day = start + timedelta(days=offset)
         add_session(db, user, day, 10 if offset == 3 else 70)
         settle_day(db, day)
 
-    # 실패한 날을 복구해 두어도 완주로 인정되지 않는다
     missed = db.query(DailyRecord).filter_by(date=start + timedelta(days=3)).one()
     missed.result = "passed"
     db.commit()
 
+    for offset in range(4, 7):
+        day = start + timedelta(days=offset)
+        add_session(db, user, day, 70)
+        settle_day(db, day)
+
     db.refresh(challenge)
     assert challenge.status == "completed"
+    # 마감 시점의 결과는 [success x6, passed] — failed 는 없지만 완주도 아니다
+    results = {r.result for r in db.query(DailyRecord)
+                                   .filter_by(challenge_id=challenge.id)}
+    assert results == {"success", "passed"}
     assert db.query(CreditLedger).filter_by(reason="bonus").count() == 0
 
 
