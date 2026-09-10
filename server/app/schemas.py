@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date as Date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -84,3 +84,22 @@ class FeedItemOut(BaseModel):
     goal_minutes: int
     result: str | None
     photos: list[FeedPhotoOut]
+
+
+class ChallengeJoinIn(BaseModel):
+    product_id: str = Field(min_length=1, max_length=32)
+
+
+class ChallengeOut(BaseModel):
+    id: str
+    product_id: str
+    entry_amount: int
+    daily_payback: int
+    completion_bonus: int
+    total_days: int
+    started_on: Date
+    ends_on: Date
+    paid_with: str
+    status: str
+
+    model_config = {"from_attributes": True}
