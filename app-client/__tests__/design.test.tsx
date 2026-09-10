@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react-native";
 
+import { Amount } from "../src/design/Amount";
 import { color, space, type } from "../src/design/tokens";
 import { TickStrip } from "../src/design/TickStrip";
 
@@ -55,5 +56,19 @@ describe("눈금 띠", () => {
   it("marks 가 days 보다 짧으면 나머지를 pending 으로 채운다", async () => {
     await render(<TickStrip days={5} marks={["secured"]} />);
     expect(screen.getAllByTestId("tick")).toHaveLength(5);
+  });
+});
+
+describe("Amount", () => {
+  it("자릿수와 '원' 단위를 별도 노드로 렌더링한다", async () => {
+    await render(<Amount value={18000} />);
+    expect(screen.getByText("18,000")).toBeTruthy();
+    expect(screen.getByText("원")).toBeTruthy();
+  });
+
+  it("음수는 부호를 유지한다", async () => {
+    await render(<Amount value={-2000} />);
+    expect(screen.getByText("-2,000")).toBeTruthy();
+    expect(screen.getByText("원")).toBeTruthy();
   });
 });
