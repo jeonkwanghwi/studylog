@@ -86,11 +86,14 @@ def _close_challenge(db: Session, user: User, challenge) -> None:
     if not challenge.completion_bonus:
         return
 
-    # 실패한 날이 없는 것만으로는 부족하다. 정산이 누락된 날이 있으면
-    # 그날은 실패로도 잡히지 않아서, 빈 구멍이 있는 런에 보너스가 나간다.
+    # 완주 보너스는 실제로 해낸 것에 준다. 크레딧으로 되산 날(passed)은 완주가
+    # 아니다 — 복구는 연속 기록을 사는 상품이고 보너스는 완주에 대한 보상이라,
+    # 둘을 섞으면 챌린지가 닫히기 전에 복구했는지 뒤에 했는지에 따라 결과가 갈린다.
+    # 모든 날이 success 여야 한다는 규칙은 복구 시점과 무관하게 같은 답을 준다.
+    # (레코드 수를 함께 세는 이유: 정산이 누락된 날은 failed 로도 안 잡힌다.)
     results = [r.result for r in db.query(DailyRecord)
                                   .filter(DailyRecord.challenge_id == challenge.id)]
     perfect = (len(results) == challenge.total_days
-               and "failed" not in results)
+               and all(r == "success" for r in results))
     if perfect:
         move(db, user, challenge.completion_bonus, "bonus", challenge.id)

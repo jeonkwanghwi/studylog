@@ -114,6 +114,33 @@ def test_challenge_closes_with_a_bonus_on_a_perfect_run(db, user):
     assert db.query(CreditLedger).filter_by(reason="bonus").one().delta == 500
 
 
+def test_a_restored_day_does_not_count_as_completion(db, user):
+    """복구는 연속 기록을 사는 상품이고 보너스는 완주에 대한 보상이다.
+    되산 날을 완주로 쳐주면, 챌린지가 닫히기 전에 복구했는지 뒤에 했는지에 따라
+    결과가 갈린다."""
+    from app.credits import start_challenge
+    from app.models import CreditLedger
+
+    start = study_day(now_utc()) - timedelta(days=7)
+    challenge = start_challenge(db, user, "challenge_7d_1k", "iap", start)
+    challenge.completion_bonus = 500
+    db.commit()
+
+    for offset in range(7):
+        day = start + timedelta(days=offset)
+        add_session(db, user, day, 10 if offset == 3 else 70)
+        settle_day(db, day)
+
+    # 실패한 날을 복구해 두어도 완주로 인정되지 않는다
+    missed = db.query(DailyRecord).filter_by(date=start + timedelta(days=3)).one()
+    missed.result = "passed"
+    db.commit()
+
+    db.refresh(challenge)
+    assert challenge.status == "completed"
+    assert db.query(CreditLedger).filter_by(reason="bonus").count() == 0
+
+
 def test_days_outside_the_challenge_window_pay_nothing(db, user):
     """배치가 밀렸다 따라잡을 때, 챌린지 시작 전날이 정산되면 기간 밖인데도
     페이백이 나가고 그날이 완주 판정에까지 끼어든다."""

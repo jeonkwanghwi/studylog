@@ -46,3 +46,25 @@ def test_transport_failure_does_not_raise(monkeypatch):
 
     monkeypatch.setattr(httpx, "post", fake_post)
     assert send_push([Notification("t", "제목", "본문")]) == 0
+
+
+def test_large_batches_are_split_into_chunks_of_100(monkeypatch):
+    calls = []
+
+    class Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+    def fake_post(url, json, timeout):
+        calls.append(json)
+        return Resp()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    sent = send_push([Notification("t", "제목", "본문") for _ in range(250)])
+
+    assert len(calls) == 3
+    assert [len(c) for c in calls] == [100, 100, 50]
+    assert sent == 250
