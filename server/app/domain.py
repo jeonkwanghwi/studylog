@@ -53,3 +53,21 @@ CHALLENGE_PRODUCTS: dict[str, ChallengeSpec] = {
 }
 
 GRANTING_EVENT_TYPES = {"INITIAL_PURCHASE", "NON_RENEWING_PURCHASE"}
+
+
+class Outcome(NamedTuple):
+    result: str          # success | failed  (passed 는 사후 복구로만 생긴다)
+    payback: int         # 이날 적립될 크레딧
+    new_streak: int
+
+
+def settle_outcome(total: int, goal: int, streak: int, daily_payback: int) -> Outcome:
+    """하루치 결과를 정한다. 스펙 §4.3.
+
+    선 결제 모델이라 사전 방어가 없다. 달성하면 하루치를 돌려받고,
+    못 하면 그 몫은 서비스에 귀속된다. `daily_payback`이 0이면 활성 챌린지가 없는
+    유저이며, streak만 계산되고 크레딧은 움직이지 않는다.
+    """
+    if total >= goal:
+        return Outcome("success", daily_payback, streak + 1)
+    return Outcome("failed", 0, 0)
