@@ -61,8 +61,11 @@ def revenuecat(
         db.commit()
         return {"started": False}
 
-    charged = event.get("price", event.get("price_in_purchased_currency"))
-    if charged is not None and int(charged) != spec.price:
+    # price_in_purchased_currency 를 우선한다 — price 는 RevenueCat이 USD로
+    # 환산한 값이라, 원화 spec.price와 그대로 비교하면 정상 결제마다 불일치가
+    # 찍혀 신호가 묻힌다. 두 필드 다 없으면 검사를 건너뛴다.
+    charged = event.get("price_in_purchased_currency", event.get("price"))
+    if charged is not None and abs(float(charged) - spec.price) > 1:
         logger.error("결제 금액 불일치 user=%s product=%s 기대=%d 실제=%s",
                      user.id, event["product_id"], spec.price, charged)
 
@@ -105,7 +108,12 @@ def _handle_refund(db: Session, event: dict) -> dict[str, bool]:
         logger.error("환불 대상을 찾지 못함 transaction_id=%s", txn)
         return {"started": False}
 
-    challenge = db.get(Challenge, purchase.challenge_id)
+    # FOR UPDATE로 챌린지 행을 잠근다. 같은 거래의 환불이 동시에 두 번 도착하면
+    # 둘 다 status=="active"를 읽고 둘 다 회수를 시도할 수 있다 — 락을 걸어
+    # 두 번째가 첫 번째의 커밋(challenge.status=="refunded") 뒤에 읽게 만든다.
+    challenge = (db.query(Challenge).populate_existing()
+                   .filter_by(id=purchase.challenge_id)
+                   .with_for_update().one_or_none())
     if challenge is None or challenge.status == "refunded":
         return {"started": False}          # 재전송. 두 번 회수하지 않는다
 

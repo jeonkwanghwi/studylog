@@ -38,8 +38,16 @@ def move(db: Session, user: User, delta: int, reason: str,
 
     유저 행에 FOR UPDATE 락을 걸어 읽는다. 동시에 들어온 두 요청이 같은 잔액을
     읽고 둘 다 통과하면 이중 지출이 된다 (SQLite에서는 no-op).
+
+    populate_existing()은 지워도 되는 것처럼 보이지만 지우면 안 된다 — user가
+    이미 세션 identity map에 있으면(호출자 대부분이 db.get()이나
+    get_current_user로 먼저 로드해 둔다) FOR UPDATE로 다시 SELECT해도
+    SQLAlchemy가 이미 로드된 객체 속성을 덮어쓰지 않는다. 락만 걸리고
+    credit_balance는 락 걸기 전 스냅샷 그대로 읽혀서, 락이 막으려는 바로 그
+    잃어버린 갱신(lost update)이 그대로 일어난다.
     """
-    locked = db.query(User).filter_by(id=user.id).with_for_update().one()
+    locked = (db.query(User).populate_existing()
+                .filter_by(id=user.id).with_for_update().one())
     new_balance = locked.credit_balance + delta
     if new_balance < 0:
         raise InsufficientCredit()

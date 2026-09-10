@@ -1,3 +1,5 @@
+import logging
+
 from app.config import settings
 from app.models import Challenge, CreditLedger, Purchase, User
 
@@ -89,6 +91,35 @@ def test_over_cap_iap_purchase_still_starts_a_challenge(client, auth, db):
     challenge = db.query(Challenge).one()
     assert challenge.status == "active"
     assert challenge.entry_amount == 42000
+
+
+def test_matching_charged_price_logs_no_mismatch(client, auth, db, caplog):
+    """price_in_purchased_currency(원화)가 spec과 일치하면 됐다. price(USD 환산값,
+    5.99 같은 값)는 무시해야 한다 — 그걸 원화와 비교하면 정상 결제마다 불일치가
+    찍힌다."""
+    user = db.query(User).one()
+    payload = event(user.id)
+    payload["event"]["price_in_purchased_currency"] = 7000
+    payload["event"]["price"] = 5.99
+
+    with caplog.at_level(logging.ERROR, logger="app.routers.webhooks"):
+        r = client.post("/webhooks/revenuecat", headers=HEADERS, json=payload)
+
+    assert r.status_code == 200 and r.json()["started"] is True
+    assert "금액 불일치" not in caplog.text
+
+
+def test_mismatched_charged_price_logs_but_still_starts_the_challenge(client, auth, db, caplog):
+    user = db.query(User).one()
+    payload = event(user.id)
+    payload["event"]["price_in_purchased_currency"] = 5000   # 7000이어야 한다
+
+    with caplog.at_level(logging.ERROR, logger="app.routers.webhooks"):
+        r = client.post("/webhooks/revenuecat", headers=HEADERS, json=payload)
+
+    assert r.status_code == 200 and r.json()["started"] is True
+    assert "금액 불일치" in caplog.text
+    assert db.query(Challenge).one().entry_amount == 7000    # 그래도 기록대로 챌린지는 연다
 
 
 def test_second_purchase_while_active_is_recorded_but_starts_nothing(client, auth, db):
