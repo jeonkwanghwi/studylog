@@ -111,3 +111,16 @@ class ChallengeOut(BaseModel):
     status: str
 
     model_config = {"from_attributes": True}
+
+
+class DailyRecordOut(BaseModel):
+    id: str
+    date: Date
+    total_minutes: int
+    goal_minutes: int
+    result: str
+    payback_amount: int
+    streak_snapshot: int
+    settled_at: datetime
+
+    model_config = {"from_attributes": True}
