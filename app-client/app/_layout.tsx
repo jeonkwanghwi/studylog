@@ -1,13 +1,8 @@
-import {
-  IBMPlexSansKR_400Regular,
-  IBMPlexSansKR_700Bold,
-  useFonts,
-} from "@expo-google-fonts/ibm-plex-sans-kr";
-import { IBMPlexMono_600SemiBold } from "@expo-google-fonts/ibm-plex-mono";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 
-import { color } from "../src/design/tokens";
+import { color, fonts } from "../src/design/tokens";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 10_000 } },
@@ -15,9 +10,9 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const [loaded] = useFonts({
-    IBMPlexSansKR_400Regular,
-    IBMPlexSansKR_700Bold,
-    IBMPlexMono_600SemiBold,
+    [fonts.REGULAR]: require("../assets/fonts/Pretendard-Regular.otf"),
+    [fonts.MEDIUM]: require("../assets/fonts/Pretendard-Medium.otf"),
+    [fonts.BOLD]: require("../assets/fonts/Pretendard-Bold.otf"),
   });
   if (!loaded) return null;
 
@@ -26,7 +21,7 @@ export default function RootLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: color.ground },
+          contentStyle: { backgroundColor: color.bg },
         }}
       />
     </QueryClientProvider>

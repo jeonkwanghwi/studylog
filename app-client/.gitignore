@@ -43,3 +43,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# 컨트롤러가 디자인 확인용으로 만드는 스크래치 화면
+app/__*/
