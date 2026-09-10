@@ -3,11 +3,13 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app import notifications
 from app.config import settings
 from app.db import get_db
 from app.domain import counted_minutes
 from app.judge.base import JudgeProvider, get_judge, is_pass, judge_photo
 from app.models import Photo, StudySession, User, Verdict
+from app.notifications import Notification
 from app.schemas import JudgeResultOut, SessionOut
 from app.security import get_current_user
 from app.storage import PhotoStorage, get_storage, photo_key, process_image
@@ -56,6 +58,14 @@ def _last_reason(db: Session, photo_id: str) -> str:
     return row.reason if row else ""
 
 
+def notify_rejection(user: User, reason: str) -> None:
+    """앱을 닫은 사이에 거절되면 세션이 통째로 날아간다. 즉시 알린다."""
+    if user.expo_push_token:
+        notifications.sender([Notification(
+            token=user.expo_push_token, title="인증이 거절됐습니다", body=reason,
+        )])
+
+
 @router.post("/sessions/start", response_model=JudgeResultOut)
 async def start_session(
     image: UploadFile = File(...),
@@ -78,10 +88,14 @@ async def start_session(
         db.add(session)
     db.commit()
 
+    reason = _last_reason(db, photo.id)
+    if not ok:
+        notify_rejection(user, reason)
+
     return JudgeResultOut(
         result="pass" if ok else "fail",
         photo_id=photo.id,
-        reason=_last_reason(db, photo.id),
+        reason=reason,
         session=SessionOut.model_validate(session) if session else None,
     )
 
@@ -116,10 +130,14 @@ async def end_session(
         close_session(session, photo)
     db.commit()
 
+    reason = _last_reason(db, photo.id)
+    if not ok:
+        notify_rejection(user, reason)
+
     return JudgeResultOut(
         result="pass" if ok else "fail",
         photo_id=photo.id,
-        reason=_last_reason(db, photo.id),
+        reason=reason,
         session=SessionOut.model_validate(session) if ok else None,
     )
 
