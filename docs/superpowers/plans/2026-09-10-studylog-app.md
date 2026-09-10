@@ -40,33 +40,48 @@
 
 **Task 3 이후의 어떤 화면도 색·간격·글자 크기를 직접 쓰지 않는다.** Task 4~16의 코드
 블록에는 값이 직접 적혀 있는데, 그것은 구조를 보여주기 위한 것이고 **아래 대응표대로
-치환해서 구현한다.** 값을 그대로 두면 열 화면 뒤에는 되돌릴 수 없다.
+치환해서 구현한다.**
+
+디자인 시스템은 토스를 기준으로 잡혀 있다 — 흰 바탕, 강조색은 파랑 하나, 위계는
+색이 아니라 **굵기와 여백**으로 만든다. 전 사이즈에 음수 자간이 들어가 있고, 그것이
+한국어 UI가 성기지 않고 단단해 보이는 이유의 큰 부분이다.
 
 | 코드 블록의 값 | 치환 |
 |---|---|
-| `#18181b`, `#000` (배경) | `color.ink` |
-| `#fff` (잉크 위 글자) | `color.paper` |
-| `#f4f4f5` (면) | `<Sheet>` 로 교체 |
-| `#e4e4e7`, `#ddd`, `#d4d4d8` (선) | `color.line` |
-| `#52525b` | `<T kind="muted">` |
-| `#71717a`, `#a1a1aa` | `<T variant="small" kind="muted">` |
-| `#dc2626` (위험·손실) | `color.stamp` |
-| `#2563eb` (링크성 액션) | `<Button tone="quiet">` |
-| `#16a34a` (성공) | 쓰지 않는다. 달성은 `color.highlight` 마크로 표현한다 |
-| `padding: 14/16/18`, `gap: 8/12/16` | `space.sm` `space.md` `space.lg` |
-| `borderRadius: 10/12/14/16` | `radius.sheet` (면) · `radius.button` (버튼) |
-| `fontSize: 34/44` | `<T variant="display">` |
-| `fontSize: 22/24`, `fontWeight: "700"` | `<T variant="title">` |
-| `fontSize: 13`, `fontSize: 12` | `<T variant="small">` |
-| 금액을 그리는 모든 `<Text>` | `<T variant="amount">` — 자릿수가 세로로 맞아야 한다 |
+| `#18181b`, `#000` (배경) | `color.accent` (주요 동작) 또는 `color.text` (글자) |
+| `#fff` (강조 위 글자) | `"#FFFFFF"` — `Button` 이 알아서 처리한다 |
+| `#f4f4f5` (면) | `<Card>` 로 교체. 그냥 채움이면 `color.fill` |
+| `#e4e4e7`, `#ddd`, `#d4d4d8` (선) | 선을 쓰지 않는다. 여백이나 `color.fill` 로 구분한다 |
+| `#52525b` | `<T kind="sub">` |
+| `#71717a`, `#a1a1aa` | `<T variant="caption" kind="muted">` |
+| `#dc2626` (위험·손실) | `<T kind="negative">` / `color.negative` |
+| `#2563eb` (링크성 액션) | `<Button tone="text">` |
+| `#16a34a` (성공) | 초록을 쓰지 않는다. 긍정은 `color.accent` 다 |
+| `padding: 14/16/18` | `space.base` (16) · `space.lg` (20) · `space.xl` (24) |
+| `gap: 8/12/16` | `space.sm` · `space.md` · `space.base` |
+| `borderRadius: 10/12/14/16` | `radius.card` (면) · `radius.button` (버튼) · `radius.chip` (작은 것) |
+| `fontSize: 34/44` | `<T variant="hero">` |
+| `fontSize: 22/24`, `fontWeight:"700"` | `<T variant="title">` |
+| `fontSize: 17~20` 소제목 | `<T variant="section">` |
+| `fontSize: 15` 본문 | `<T variant="body">` |
+| `fontSize: 12/13` | `<T variant="caption">` |
+| 금액을 그리는 모든 것 | `<Amount value={n} size kind />` — 절대 `₩` 문자를 쓰지 않는다 |
 | `<Text>` · `<Pressable>` 직접 사용 | `<T>` · `<Button>` |
+| `Sheet` (구 이름) | `<Card>` |
+| `TickStrip` (구 이름) | `<DayGrid start days marks today />` |
+
+**컴포넌트 이름이 바뀐 것** — 계획 본문에 `Sheet`·`TickStrip` 이 남아 있으면 각각
+`Card`·`DayGrid` 로 읽는다. `CreditMeter` 는 만들지 않는다. 홈의 금액 표시는
+`<Amount size="hero">` 와 `<T>` 조합으로 직접 짜고, 진행 상황은 `<DayGrid>` 가 보여준다.
 
 **홈의 가장 큰 숫자는 "돌려받은 돈"이 아니라 "아직 못 받은 돈"이다.** 같은 데이터를
-뒤집는 것만으로 화면이 제품의 논지(손실회피)를 말한다. 보상 프레임으로 크게 띄우면
-그냥 또 하나의 적립 앱이 된다. `CreditMeter` 는 그렇게 다시 만든다.
+뒤집는 것만으로 화면이 제품의 논지(손실회피)를 말한다.
 
-**움직이는 것은 하나뿐이다** — 인증이 통과되면 오늘 눈금이 칠해진다. 화면 진입
-페이드, 카드 호버, 순차 등장은 넣지 않는다.
+**솔리드 강조색은 주요 동작 하나에만 쓴다.** 화면 안에서 `tone="primary"` 버튼이
+가장 강한 요소여야 한다. 다른 것이 같은 파랑으로 채워지면 그 특별함이 사라진다.
+
+**움직이는 것은 하나뿐이다** — 인증이 통과되면 오늘 칸이 칠해진다. 화면 진입 페이드,
+카드 호버, 순차 등장은 넣지 않는다.
 
 ---
 
