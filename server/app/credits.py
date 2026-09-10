@@ -2,6 +2,7 @@ from datetime import date as Date, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.domain import CHALLENGE_PRODUCTS
 from app.models import Challenge, CreditLedger, User
 
@@ -19,6 +20,10 @@ class ChallengeAlreadyActive(ChallengeError):
 
 
 class InsufficientCredit(ChallengeError):
+    pass
+
+
+class EntryTooLargeForFirstChallenge(ChallengeError):
     pass
 
 
@@ -46,6 +51,18 @@ def active_challenge(db: Session, user_id: str) -> Challenge | None:
               .one_or_none())
 
 
+def entry_limit(db: Session, user: User) -> int:
+    """이 유저가 걸 수 있는 최대 참가비.
+
+    한 사이클도 겪어보지 않은 유저가 4만원을 거는 것은 동기부여가 아니라
+    환불 요구를 만드는 길이다. 한 번 완주하면 풀린다.
+    """
+    completed = db.query(Challenge).filter_by(user_id=user.id, status="completed").count()
+    if completed:
+        return settings.max_entry_amount
+    return settings.first_challenge_max_entry
+
+
 def start_challenge(db: Session, user: User, product_id: str,
                     paid_with: str, today: Date) -> Challenge:
     """챌린지를 연다. paid_with 가 'credit' 이면 참가비를 크레딧에서 뺀다.
@@ -58,6 +75,10 @@ def start_challenge(db: Session, user: User, product_id: str,
         raise UnknownProduct(product_id)
     if active_challenge(db, user.id) is not None:
         raise ChallengeAlreadyActive()
+    # 첫 챌린지 상한은 크레딧 참가에만 건다. IAP는 이미 결제가 끝난 뒤에
+    # 웹훅이 오므로, 거기서 거절하면 유저가 돈만 내고 아무것도 못 받는다.
+    if paid_with == "credit" and spec.price > entry_limit(db, user):
+        raise EntryTooLargeForFirstChallenge()
     if paid_with == "credit" and user.credit_balance < spec.price:
         raise InsufficientCredit()
 

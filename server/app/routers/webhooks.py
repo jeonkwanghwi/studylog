@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.credits import ChallengeAlreadyActive, start_challenge
+from app.credits import ChallengeAlreadyActive, entry_limit, start_challenge
 from app.db import get_db
 from app.domain import CHALLENGE_PRODUCTS, GRANTING_EVENT_TYPES
 from app.models import Purchase, User
@@ -48,6 +48,12 @@ def revenuecat(
         logger.error("알 수 없는 유저의 결제 — 재시도 유도: %s",
                      event.get("app_user_id"))
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "unknown user")
+
+    if spec.price > entry_limit(db, user):
+        # 상한을 넘겼지만 돈은 이미 걷혔다. 인정하고 로그만 남긴다 —
+        # 여기서 거절하면 유저가 결제하고 아무것도 못 받는다.
+        logger.warning("첫 챌린지 상한 초과 결제 user=%s product=%s",
+                       user.id, event["product_id"])
 
     try:
         challenge = start_challenge(db, user, event["product_id"], "iap",

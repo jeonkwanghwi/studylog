@@ -15,11 +15,15 @@ def user(db):
     return u
 
 
-def test_product_table_is_the_full_grid():
-    """기간 3종 x 하루 배팅액 3종."""
+def test_catalogue_excludes_combinations_over_the_cap():
+    """상품 자체를 안 만들면 스토어에 등록될 수 없고, 애플이 돈을 걷은 뒤에
+    거절해야 하는 상황이 원천적으로 사라진다."""
     assert set(CHALLENGE_PRODUCTS) == {
-        f"challenge_{days}d_{k}k" for days in (7, 14, 30) for k in (1, 2, 3)
+        "challenge_7d_1k", "challenge_7d_2k", "challenge_7d_3k",
+        "challenge_14d_1k", "challenge_14d_2k", "challenge_14d_3k",
+        "challenge_30d_1k",
     }
+    assert all(spec.price <= 50000 for spec in CHALLENGE_PRODUCTS.values())
 
 
 def test_entry_fee_is_always_days_times_daily_stake():
@@ -31,7 +35,42 @@ def test_entry_fee_is_always_days_times_daily_stake():
 def test_completion_bonus_scales_with_duration_not_a_flat_amount():
     assert CHALLENGE_PRODUCTS["challenge_7d_3k"].completion_bonus == 0
     assert CHALLENGE_PRODUCTS["challenge_14d_2k"].completion_bonus == 1400
-    assert CHALLENGE_PRODUCTS["challenge_30d_3k"].completion_bonus == 9000
+    assert CHALLENGE_PRODUCTS["challenge_30d_1k"].completion_bonus == 3000
+
+
+def test_first_challenge_cap_hides_the_biggest_products(client, auth, db):
+    names = {p["product_id"] for p in client.get("/challenges/products",
+                                                 headers=auth).json()}
+    assert "challenge_14d_3k" not in names      # 42,000 > 30,000
+    assert "challenge_30d_1k" in names          # 30,000 == 상한
+
+
+def test_completing_a_challenge_unlocks_the_bigger_products(client, auth, db):
+    from app.models import Challenge
+
+    user = db.query(User).one()
+    db.add(Challenge(user_id=user.id, product_id="challenge_7d_1k",
+                     entry_amount=7000, daily_payback=1000, completion_bonus=0,
+                     total_days=7, started_on=study_day(now_utc()),
+                     ends_on=study_day(now_utc()), paid_with="iap",
+                     status="completed"))
+    db.commit()
+
+    names = {p["product_id"] for p in client.get("/challenges/products",
+                                                 headers=auth).json()}
+    assert "challenge_14d_3k" in names
+
+
+def test_credit_entry_over_the_first_challenge_cap_is_forbidden(client, auth, db):
+    user = db.query(User).one()
+    move(db, user, 50000, "purchase")
+    db.commit()
+
+    r = client.post("/challenges", headers=auth,
+                    json={"product_id": "challenge_14d_3k"})
+    assert r.status_code == 403
+    db.refresh(user)
+    assert user.credit_balance == 50000
 
 
 def test_daily_payback_never_exceeds_entry_per_day():

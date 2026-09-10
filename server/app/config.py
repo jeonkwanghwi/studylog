@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     revenuecat_webhook_secret: str = "dev-webhook-secret"
     restore_window_hours: int = 24
     restore_credit_cost: int = 2000
+    max_entry_amount: int = 50000
+    first_challenge_max_entry: int = 30000
 
     # 알림
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"

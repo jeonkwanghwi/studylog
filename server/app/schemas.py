@@ -90,6 +90,14 @@ class ChallengeJoinIn(BaseModel):
     product_id: str = Field(min_length=1, max_length=32)
 
 
+class ChallengeProductOut(BaseModel):
+    product_id: str
+    days: int
+    daily_payback: int
+    price: int
+    completion_bonus: int
+
+
 class ChallengeOut(BaseModel):
     id: str
     product_id: str

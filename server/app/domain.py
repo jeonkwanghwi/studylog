@@ -2,6 +2,8 @@ import random
 from datetime import datetime
 from typing import NamedTuple
 
+from app.config import settings
+
 
 def counted_minutes(started_at: datetime, ended_at: datetime, cap: int) -> int:
     """세션이 인정받는 분. 상한을 넘지 않고 음수가 되지 않는다."""
@@ -40,10 +42,14 @@ def _spec(days: int, daily: int) -> ChallengeSpec:
                          completion_bonus=int(price * _BONUS_RATE[days]))
 
 
+# settings.max_entry_amount 를 넘는 조합은 상품으로 만들지 않는다. 스토어에 등록조차
+# 되지 않으므로 살 수가 없다 — 애플이 돈을 걷은 뒤에 거절하는 상황이 원천적으로 없다.
 CHALLENGE_PRODUCTS: dict[str, ChallengeSpec] = {
-    f"challenge_{days}d_{daily // 1000}k": _spec(days, daily)
+    name: spec
     for days in (7, 14, 30)
     for daily in (1000, 2000, 3000)
+    for name, spec in [(f"challenge_{days}d_{daily // 1000}k", _spec(days, daily))]
+    if spec.price <= settings.max_entry_amount
 }
 
 GRANTING_EVENT_TYPES = {"INITIAL_PURCHASE", "NON_RENEWING_PURCHASE"}
