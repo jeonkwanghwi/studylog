@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@expo-google-fonts/ibm-plex-mono": "^0.4.1",
+    "@expo-google-fonts/ibm-plex-sans-kr": "^0.4.1",
     "@tanstack/react-query": "^5.102.8",
     "expo": "~57.0.21",
     "expo-camera": "~57.0.4",
     "expo-constants": "~57.0.17",
+    "expo-font": "~57.0.3",
     "expo-image-picker": "~57.0.16",
     "expo-linking": "~57.0.9",
     "expo-notifications": "~57.0.17",
