@@ -6,7 +6,7 @@
 
 **Architecture:** Expo Router의 파일 기반 라우팅으로 4개 탭(홈·피드·기록·설정)과 3개 모달(촬영·이의제기·복구)을 구성한다. 서버 상태는 전부 TanStack Query가 들고, 전역 상태 관리자는 두지 않는다 — 이 앱이 다루는 상태는 사실상 전부 서버 상태다. 토큰만 expo-secure-store에 남는다. 시간·판정·가격은 앱이 계산하지 않고 서버가 준 값을 표시만 한다.
 
-**Tech Stack:** Expo SDK 52 / TypeScript / Expo Router / TanStack Query v5 / expo-camera / expo-secure-store / expo-notifications / react-native-purchases (RevenueCat) / IBM Plex Sans KR · IBM Plex Mono / Jest + React Native Testing Library
+**Tech Stack:** Expo SDK 57 (React 19 / RN 0.86) / TypeScript / Expo Router / TanStack Query v5 / expo-camera / expo-secure-store / expo-notifications / react-native-purchases (RevenueCat) / IBM Plex Sans KR · IBM Plex Mono / Jest + React Native Testing Library
 
 **Spec:** [`docs/superpowers/specs/2026-09-09-studylog-v1-design.md`](../specs/2026-09-09-studylog-v1-design.md) — 특히 §9.1(앱 설계)와 §4(핵심 흐름)
 
@@ -25,6 +25,16 @@
 - 하루 경계는 **04:00 KST**다. "오늘"을 계산할 때 자정 기준으로 자르지 않는다
 - 401 응답은 토큰 만료로 간주하고 로그인 화면으로 보낸다. 403·402·409는 각각 다른 안내 문구를 쓴다
 - API 기본 주소는 `EXPO_PUBLIC_API_URL` 환경변수로 주입한다. 소스에 도메인을 박지 않는다
+
+### 환경 (Task 1에서 확인된 실제 값)
+
+- Node는 nvm에만 있고 기본 PATH에 없다. 모든 셸에서 먼저 실행한다:
+  `export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$PATH"`
+- 설치된 것은 **Expo SDK 57 / React 19.2 / React Native 0.86**이다
+- `npm install` 은 **`--legacy-peer-deps`** 가 필요하다. 이 조합에서 peer 범위가 아직 어긋나 있다
+- `jest-expo` 는 `@react-native/jest-preset` 을 peer로 요구하므로 dev 의존성에 함께 넣는다
+- `expo start --web` 은 `react-dom` 과 `react-native-web` 이 있어야 뜬다
+- `npx expo install` 로 Expo 패키지를 넣고, 나머지는 `npm install --legacy-peer-deps` 로 넣는다
 
 ### 스타일은 전부 `src/design` 에서 온다
 

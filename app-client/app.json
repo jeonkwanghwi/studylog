@@ -18,9 +18,6 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
     "scheme": "studylog",
     "plugins": [
       "expo-router",
@@ -28,6 +25,10 @@
       "expo-secure-store",
       "expo-camera",
       "expo-font"
+    ],
+    "platforms": [
+      "ios",
+      "android"
     ]
   }
 }
