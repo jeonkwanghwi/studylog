@@ -1,10 +1,13 @@
+import logging
 from datetime import date as Date, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.domain import CHALLENGE_PRODUCTS
-from app.models import Challenge, CreditLedger, User
+from app.models import Challenge, CreditLedger, DailyRecord, User
+
+logger = logging.getLogger(__name__)
 
 
 class ChallengeError(Exception):
@@ -97,3 +100,33 @@ def start_challenge(db: Session, user: User, product_id: str,
     if paid_with == "credit":
         move(db, user, -spec.price, "entry", challenge.id)
     return challenge
+
+
+def claw_back(db: Session, user: User, challenge: Challenge) -> int:
+    """환불된 챌린지가 지급한 크레딧을 회수한다.
+
+    이미 써버린 크레딧은 회수할 수 없으므로 잔액에서 뺄 수 있는 만큼만 뺀다.
+    부족분은 로그로 남긴다 — 음수 잔액을 만들면 그 유저는 다시는 아무것도
+    못 사게 되고, 그건 회수가 아니라 계정 파괴다.
+    """
+    granted = sum(
+        row.delta for row in db.query(CreditLedger).filter(
+            CreditLedger.user_id == user.id,
+            CreditLedger.reason.in_(("payback", "bonus")),
+            CreditLedger.ref_id.in_(
+                db.query(DailyRecord.id).filter(
+                    DailyRecord.challenge_id == challenge.id)
+            ) | (CreditLedger.ref_id == challenge.id),
+        )
+    )
+    taken = min(granted, user.credit_balance)
+    if taken:
+        move(db, user, -taken, "refund", challenge.id)
+    if taken < granted:
+        logger.warning(
+            "환불 회수 부족 user=%s challenge=%s 지급=%d 회수=%d",
+            user.id, challenge.id, granted, taken,
+        )
+    challenge.status = "refunded"
+    user.refund_count += 1
+    return taken

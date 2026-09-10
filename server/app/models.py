@@ -54,6 +54,7 @@ class User(Base):
     streak_count: Mapped[int] = mapped_column(Integer, default=0)
     credit_balance: Mapped[int] = mapped_column(Integer, default=0)   # 원 단위
     expo_push_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    refund_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
 
 
@@ -182,4 +183,7 @@ class Purchase(Base):
     product_id: Mapped[str] = mapped_column(String(32))
     amount: Mapped[int] = mapped_column(Integer)
     challenge_id: Mapped[str | None] = mapped_column(ForeignKey("challenges.id"), nullable=True)
+    transaction_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(TS, default=now_utc)

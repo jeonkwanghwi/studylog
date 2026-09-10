@@ -27,6 +27,7 @@ def upgrade() -> None:
         sa.Column("streak_count", sa.Integer(), nullable=False),
         sa.Column("credit_balance", sa.Integer(), nullable=False),
         sa.Column("expo_push_token", sa.String(length=255), nullable=True),
+        sa.Column("refund_count", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("provider", "provider_sub", name="uq_users_provider_provider_sub"),
     )
@@ -150,12 +151,15 @@ def upgrade() -> None:
         sa.Column("product_id", sa.String(length=32), nullable=False),
         sa.Column("amount", sa.Integer(), nullable=False),
         sa.Column("challenge_id", sa.String(length=36), sa.ForeignKey("challenges.id"), nullable=True),
+        sa.Column("transaction_id", sa.String(length=64), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_purchases_user_id", "purchases", ["user_id"])
+    op.create_index("ix_purchases_transaction_id", "purchases", ["transaction_id"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_purchases_transaction_id", table_name="purchases")
     op.drop_index("ix_purchases_user_id", table_name="purchases")
     op.drop_table("purchases")
     op.drop_index("ix_credit_ledger_user_id", table_name="credit_ledger")

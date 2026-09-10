@@ -54,6 +54,9 @@ CHALLENGE_PRODUCTS: dict[str, ChallengeSpec] = {
 
 GRANTING_EVENT_TYPES = {"INITIAL_PURCHASE", "NON_RENEWING_PURCHASE"}
 
+# RevenueCat 이 환불·취소를 알리는 이벤트 타입
+REFUND_EVENT_TYPES = {"CANCELLATION", "REFUND"}
+
 
 class Outcome(NamedTuple):
     result: str          # success | failed  (passed 는 사후 복구로만 생긴다)

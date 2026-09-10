@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.credits import ChallengeAlreadyActive, entry_limit, start_challenge
+from app.credits import ChallengeAlreadyActive, claw_back, entry_limit, start_challenge
 from app.db import get_db
-from app.domain import CHALLENGE_PRODUCTS, GRANTING_EVENT_TYPES
-from app.models import Purchase, User
+from app.domain import CHALLENGE_PRODUCTS, GRANTING_EVENT_TYPES, REFUND_EVENT_TYPES
+from app.models import Challenge, Purchase, User
 from app.time_utils import now_utc, study_day
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,9 @@ def revenuecat(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid webhook secret")
 
     event = payload.get("event", {})
+    if event.get("type") in REFUND_EVENT_TYPES:
+        return _handle_refund(db, event)
+
     if event.get("type") not in GRANTING_EVENT_TYPES:
         return {"started": False}
 
@@ -64,12 +67,35 @@ def revenuecat(
         logger.warning("활성 챌린지가 있어 두 번째를 열지 않음 user=%s", user.id)
         db.add(Purchase(user_id=user.id, revenuecat_event_id=event_id,
                         product_id=event["product_id"], amount=spec.price,
-                        challenge_id=None))
+                        challenge_id=None,
+                        transaction_id=str(event.get("transaction_id"))))
         db.commit()
         return {"started": False}
 
     db.add(Purchase(user_id=user.id, revenuecat_event_id=event_id,
                     product_id=event["product_id"], amount=spec.price,
-                    challenge_id=challenge.id))
+                    challenge_id=challenge.id,
+                    transaction_id=str(event.get("transaction_id"))))
     db.commit()
     return {"started": True}
+
+
+def _handle_refund(db: Session, event: dict) -> dict[str, bool]:
+    """환불은 곧 참가 취소다. 챌린지를 닫고 그 챌린지가 준 크레딧을 회수한다."""
+    txn = str(event.get("transaction_id"))
+    purchase = (db.query(Purchase)
+                  .filter_by(transaction_id=txn)
+                  .order_by(Purchase.created_at.desc()).first())
+    if purchase is None or purchase.challenge_id is None:
+        # 모르는 거래다. 재시도해도 달라지지 않으므로 200 으로 닫는다.
+        logger.error("환불 대상을 찾지 못함 transaction_id=%s", txn)
+        return {"started": False}
+
+    challenge = db.get(Challenge, purchase.challenge_id)
+    if challenge is None or challenge.status == "refunded":
+        return {"started": False}          # 재전송. 두 번 회수하지 않는다
+
+    user = db.get(User, purchase.user_id)
+    claw_back(db, user, challenge)
+    db.commit()
+    return {"started": False}
