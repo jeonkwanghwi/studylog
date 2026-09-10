@@ -114,6 +114,51 @@ def test_challenge_closes_with_a_bonus_on_a_perfect_run(db, user):
     assert db.query(CreditLedger).filter_by(reason="bonus").one().delta == 500
 
 
+def test_days_outside_the_challenge_window_pay_nothing(db, user):
+    """배치가 밀렸다 따라잡을 때, 챌린지 시작 전날이 정산되면 기간 밖인데도
+    페이백이 나가고 그날이 완주 판정에까지 끼어든다."""
+    from app.credits import start_challenge
+    from app.models import CreditLedger
+
+    today = study_day(now_utc())
+    start_challenge(db, user, "challenge_7d_1k", "iap", today)
+    db.commit()
+
+    before = today - timedelta(days=1)
+    add_session(db, user, before, 70)
+    settle_day(db, before)
+    db.refresh(user)
+
+    record = db.query(DailyRecord).filter_by(date=before).one()
+    assert record.payback_amount == 0
+    assert record.challenge_id is None
+    assert user.credit_balance == 0
+    assert db.query(CreditLedger).filter_by(reason="payback").count() == 0
+
+
+def test_bonus_requires_every_day_of_the_run_to_be_settled(db, user):
+    """실패한 날이 없다는 것만으로는 완주가 아니다. 정산이 누락된 날은
+    실패로도 잡히지 않으므로, 구멍 난 런에 보너스가 나가면 안 된다."""
+    from app.credits import start_challenge
+    from app.models import Challenge, CreditLedger
+
+    start = study_day(now_utc()) - timedelta(days=7)
+    challenge = start_challenge(db, user, "challenge_7d_1k", "iap", start)
+    challenge.completion_bonus = 500
+    db.commit()
+
+    for offset in range(7):
+        if offset == 2:
+            continue                      # 이 날은 정산이 누락됐다
+        day = start + timedelta(days=offset)
+        add_session(db, user, day, 70)
+        settle_day(db, day)
+
+    db.refresh(challenge)
+    assert challenge.status == "completed"
+    assert db.query(CreditLedger).filter_by(reason="bonus").count() == 0
+
+
 def test_a_single_miss_forfeits_the_completion_bonus(db, user):
     from app.credits import start_challenge
     from app.models import Challenge, CreditLedger

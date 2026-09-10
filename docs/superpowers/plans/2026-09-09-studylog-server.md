@@ -3743,8 +3743,8 @@ DB를 만지는 배치는 그 위에 얇게 얹는다.
 **Interfaces:**
 - Consumes: `day_bounds`, `StudySession`, `DailyRecord`, `User`
 - Produces:
-  - `app.domain.Outcome(result: str, tickets_used: int, new_streak: int)` — frozen dataclass
-  - `app.domain.settle_outcome(total: int, goal: int, tickets: int, streak: int, defense_cost: int) -> Outcome`
+  - `app.domain.Outcome(result: str, payback: int, new_streak: int)` — NamedTuple
+  - `app.domain.settle_outcome(total: int, goal: int, streak: int, daily_payback: int) -> Outcome`
   - `app.batch.settlement.settle_day(db: Session, day: date) -> int` — 만든 레코드 수
 
 - [ ] **Step 1: 순수 규칙 테스트 작성**
@@ -3932,6 +3932,51 @@ def test_challenge_closes_with_a_bonus_on_a_perfect_run(db, user):
     assert db.query(CreditLedger).filter_by(reason="bonus").one().delta == 500
 
 
+def test_days_outside_the_challenge_window_pay_nothing(db, user):
+    """배치가 밀렸다 따라잡을 때, 챌린지 시작 전날이 정산되면 기간 밖인데도
+    페이백이 나가고 그날이 완주 판정에까지 끼어든다."""
+    from app.credits import start_challenge
+    from app.models import CreditLedger
+
+    today = study_day(now_utc())
+    start_challenge(db, user, "challenge_7d_1k", "iap", today)
+    db.commit()
+
+    before = today - timedelta(days=1)
+    add_session(db, user, before, 70)
+    settle_day(db, before)
+    db.refresh(user)
+
+    record = db.query(DailyRecord).filter_by(date=before).one()
+    assert record.payback_amount == 0
+    assert record.challenge_id is None
+    assert user.credit_balance == 0
+    assert db.query(CreditLedger).filter_by(reason="payback").count() == 0
+
+
+def test_bonus_requires_every_day_of_the_run_to_be_settled(db, user):
+    """실패한 날이 없다는 것만으로는 완주가 아니다. 정산이 누락된 날은
+    실패로도 잡히지 않으므로, 구멍 난 런에 보너스가 나가면 안 된다."""
+    from app.credits import start_challenge
+    from app.models import Challenge, CreditLedger
+
+    start = study_day(now_utc()) - timedelta(days=7)
+    challenge = start_challenge(db, user, "challenge_7d_1k", "iap", start)
+    challenge.completion_bonus = 500
+    db.commit()
+
+    for offset in range(7):
+        if offset == 2:
+            continue                      # 이 날은 정산이 누락됐다
+        day = start + timedelta(days=offset)
+        add_session(db, user, day, 70)
+        settle_day(db, day)
+
+    db.refresh(challenge)
+    assert challenge.status == "completed"
+    assert db.query(CreditLedger).filter_by(reason="bonus").count() == 0
+
+
 def test_a_single_miss_forfeits_the_completion_bonus(db, user):
     from app.credits import start_challenge
     from app.models import Challenge, CreditLedger
@@ -4054,17 +4099,23 @@ def settle_day(db: Session, day: Date) -> int:
             continue
 
         challenge = active_challenge(db, user.id)
+        # 활성이라는 것만으로는 부족하다. 배치가 하루 밀렸다가 따라잡을 때
+        # 챌린지 시작 전날이 정산되면, 기간 밖인데도 페이백이 나가고 그날이
+        # 완주 판정에도 끼어든다.
+        in_window = (challenge is not None
+                     and challenge.started_on <= day <= challenge.ends_on)
+
         total = int(minutes.get(user.id) or 0)
         outcome = settle_outcome(
             total=total, goal=user.daily_goal_minutes, streak=user.streak_count,
-            daily_payback=challenge.daily_payback if challenge else 0,
+            daily_payback=challenge.daily_payback if in_window else 0,
         )
         user.streak_count = outcome.new_streak
 
         record = DailyRecord(
             user_id=user.id, date=day, total_minutes=total,
             goal_minutes=user.daily_goal_minutes, result=outcome.result,
-            challenge_id=challenge.id if challenge else None,
+            challenge_id=challenge.id if in_window else None,
             payback_amount=outcome.payback,
             streak_snapshot=outcome.new_streak, settled_at=now_utc(),
         )
@@ -4098,10 +4149,12 @@ def _close_challenge(db: Session, user: User, challenge) -> None:
     if not challenge.completion_bonus:
         return
 
-    perfect = (db.query(DailyRecord)
-                 .filter(DailyRecord.challenge_id == challenge.id,
-                         DailyRecord.result == "failed")
-                 .count() == 0)
+    # 실패한 날이 없는 것만으로는 부족하다. 정산이 누락된 날이 있으면
+    # 그날은 실패로도 잡히지 않아서, 빈 구멍이 있는 런에 보너스가 나간다.
+    results = [r.result for r in db.query(DailyRecord)
+                                  .filter(DailyRecord.challenge_id == challenge.id)]
+    perfect = (len(results) == challenge.total_days
+               and "failed" not in results)
     if perfect:
         move(db, user, challenge.completion_bonus, "bonus", challenge.id)
 ```
@@ -4111,7 +4164,7 @@ def _close_challenge(db: Session, user: User, challenge) -> None:
 - [ ] **Step 7: 테스트 통과 확인**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_settlement_rules.py tests/test_settlement.py -v`
-Expected: PASS (16 passed)
+Expected: PASS (18 passed)
 
 - [ ] **Step 8: 커밋**
 
