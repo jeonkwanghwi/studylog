@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from app.auth.verifiers import verify_social_token
 from app.db import get_db
 from app.models import User
-from app.schemas import LoginOut, SocialLoginIn, UserOut
-from app.security import create_access_token, get_current_user
+from app.schemas import LoginOut, SocialLoginIn
+from app.security import create_access_token
 
 router = APIRouter(tags=["auth"])
 
@@ -26,8 +26,3 @@ def social_login(body: SocialLoginIn, db: Session = Depends(get_db)) -> LoginOut
         db.commit()
 
     return LoginOut(access_token=create_access_token(user.id), user=user)
-
-
-@router.get("/users/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)) -> User:
-    return user

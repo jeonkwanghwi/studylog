@@ -44,3 +44,11 @@ class JudgeResultOut(BaseModel):
 
 class AppealIn(BaseModel):
     text: str = Field(min_length=1, max_length=500)
+
+
+class GoalIn(BaseModel):
+    minutes: int = Field(ge=1, le=1440)
+
+
+class PushTokenIn(BaseModel):
+    token: str = Field(min_length=1, max_length=255)
