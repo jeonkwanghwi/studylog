@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.credits import active_challenge, start_challenge
+from app.credits import (ChallengeAlreadyActive, InsufficientCredit,
+                         UnknownProduct, active_challenge, start_challenge)
 from app.db import get_db
 from app.models import Challenge, User
 from app.schemas import ChallengeJoinIn, ChallengeOut
@@ -21,8 +22,14 @@ def join_with_credit(
     try:
         challenge = start_challenge(db, user, body.product_id, "credit",
                                     study_day(now_utc()))
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(exc))
+    except UnknownProduct:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "없는 상품입니다")
+    except ChallengeAlreadyActive:
+        raise HTTPException(status.HTTP_409_CONFLICT, "이미 진행 중인 챌린지가 있습니다")
+    except InsufficientCredit:
+        # 402는 "결제하면 해결된다"는 신호다. 잔액 부족일 때만 써야
+        # 앱이 결제창을 띄웠는데 아무것도 못 받는 상황이 안 생긴다.
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "크레딧이 부족합니다")
     db.commit()
     return challenge
 

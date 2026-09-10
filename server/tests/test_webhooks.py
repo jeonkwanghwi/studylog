@@ -57,16 +57,18 @@ def test_unrelated_event_types_are_ignored(client, auth, db):
     assert db.query(Challenge).count() == 0
 
 
-def test_unknown_product_starts_nothing(client, auth, db):
+def test_unknown_product_asks_for_a_retry(client, auth, db):
+    """200을 주면 RevenueCat이 재시도를 멈춘다. 돈은 이미 걷혔는데 기록이 없어진다."""
     user = db.query(User).one()
     r = client.post("/webhooks/revenuecat", headers=HEADERS,
                     json=event(user.id, product_id="challenge_999"))
-    assert r.json()["started"] is False
+    assert r.status_code == 503
+    assert db.query(Challenge).count() == 0
 
 
-def test_unknown_user_is_ignored(client, auth):
+def test_unknown_user_asks_for_a_retry(client, auth):
     r = client.post("/webhooks/revenuecat", headers=HEADERS, json=event("no-such-user"))
-    assert r.status_code == 200 and r.json()["started"] is False
+    assert r.status_code == 503
 
 
 def test_second_purchase_while_active_is_recorded_but_starts_nothing(client, auth, db):

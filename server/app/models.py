@@ -3,7 +3,8 @@ from datetime import UTC, date as Date
 from datetime import datetime
 
 from sqlalchemy import (JSON, Date as SADate, DateTime, Float, ForeignKey,
-                        Integer, String, Text, TypeDecorator, UniqueConstraint)
+                        Index, Integer, String, Text, TypeDecorator,
+                        UniqueConstraint, text)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -136,6 +137,12 @@ class DailyRecord(Base):
 
 class Challenge(Base):
     __tablename__ = "challenges"
+    # 활성 챌린지는 유저당 1개. 애플리케이션 검사만으로는 웹훅 동시 도착을 막지 못한다.
+    __table_args__ = (
+        Index("uq_one_active_challenge_per_user", "user_id", unique=True,
+              sqlite_where=text("status = 'active'"),
+              postgresql_where=text("status = 'active'")),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)

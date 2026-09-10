@@ -108,6 +108,11 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_challenges_user_id", "challenges", ["user_id"])
+    op.create_index(
+        "uq_one_active_challenge_per_user", "challenges", ["user_id"], unique=True,
+        sqlite_where=sa.text("status = 'active'"),
+        postgresql_where=sa.text("status = 'active'"),
+    )
 
     op.create_table(
         "daily_records",
@@ -157,6 +162,7 @@ def downgrade() -> None:
     op.drop_table("credit_ledger")
     op.drop_index("ix_daily_records_user_id", table_name="daily_records")
     op.drop_table("daily_records")
+    op.drop_index("uq_one_active_challenge_per_user", table_name="challenges")
     op.drop_index("ix_challenges_user_id", table_name="challenges")
     op.drop_table("challenges")
     op.drop_index("ix_verdicts_photo_id", table_name="verdicts")
