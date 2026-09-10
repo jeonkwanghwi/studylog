@@ -15,11 +15,23 @@ def user(db):
     return u
 
 
-def test_product_table_matches_the_spec():
-    seven = CHALLENGE_PRODUCTS["challenge_7d"]
-    assert (seven.days, seven.price, seven.daily_payback, seven.completion_bonus) == (7, 7000, 1000, 0)
-    thirty = CHALLENGE_PRODUCTS["challenge_30d"]
-    assert (thirty.days, thirty.price, thirty.daily_payback, thirty.completion_bonus) == (30, 30000, 1000, 3000)
+def test_product_table_is_the_full_grid():
+    """기간 3종 x 하루 배팅액 3종."""
+    assert set(CHALLENGE_PRODUCTS) == {
+        f"challenge_{days}d_{k}k" for days in (7, 14, 30) for k in (1, 2, 3)
+    }
+
+
+def test_entry_fee_is_always_days_times_daily_stake():
+    """전일 달성자가 낸 만큼 정확히 돌려받는다는 약속의 근거다."""
+    for name, spec in CHALLENGE_PRODUCTS.items():
+        assert spec.price == spec.days * spec.daily_payback, name
+
+
+def test_completion_bonus_scales_with_duration_not_a_flat_amount():
+    assert CHALLENGE_PRODUCTS["challenge_7d_3k"].completion_bonus == 0
+    assert CHALLENGE_PRODUCTS["challenge_14d_2k"].completion_bonus == 1400
+    assert CHALLENGE_PRODUCTS["challenge_30d_3k"].completion_bonus == 9000
 
 
 def test_daily_payback_never_exceeds_entry_per_day():
@@ -55,7 +67,7 @@ def test_balance_never_goes_negative(db, user):
 
 
 def test_iap_entry_carries_the_completion_bonus(db, user):
-    challenge = start_challenge(db, user, "challenge_30d", "iap", study_day(now_utc()))
+    challenge = start_challenge(db, user, "challenge_30d_1k", "iap", study_day(now_utc()))
     db.commit()
 
     assert challenge.status == "active"
@@ -69,7 +81,7 @@ def test_credit_entry_gets_no_completion_bonus(db, user):
     """크레딧 참가에도 보너스를 주면 완주자가 크레딧을 무한 증식시킨다."""
     move(db, user, 30000, "purchase")
     db.commit()
-    challenge = start_challenge(db, user, "challenge_30d", "credit", study_day(now_utc()))
+    challenge = start_challenge(db, user, "challenge_30d_1k", "credit", study_day(now_utc()))
     db.commit()
 
     assert challenge.completion_bonus == 0
@@ -79,7 +91,7 @@ def test_credit_entry_gets_no_completion_bonus(db, user):
 
 def test_credit_entry_requires_enough_balance(db, user):
     with pytest.raises(InsufficientCredit):
-        start_challenge(db, user, "challenge_30d", "credit", study_day(now_utc()))
+        start_challenge(db, user, "challenge_30d_1k", "credit", study_day(now_utc()))
 
 
 def test_failed_credit_entry_leaves_no_challenge_row(db, user):
@@ -88,7 +100,7 @@ def test_failed_credit_entry_leaves_no_challenge_row(db, user):
     move(db, user, 1000, "purchase")
     db.commit()
     with pytest.raises(InsufficientCredit):
-        start_challenge(db, user, "challenge_30d", "credit", study_day(now_utc()))
+        start_challenge(db, user, "challenge_30d_1k", "credit", study_day(now_utc()))
     db.commit()
 
     assert db.query(Challenge).count() == 0
@@ -96,10 +108,10 @@ def test_failed_credit_entry_leaves_no_challenge_row(db, user):
 
 
 def test_only_one_active_challenge_per_user(db, user):
-    start_challenge(db, user, "challenge_7d", "iap", study_day(now_utc()))
+    start_challenge(db, user, "challenge_7d_1k", "iap", study_day(now_utc()))
     db.commit()
     with pytest.raises(ChallengeAlreadyActive):
-        start_challenge(db, user, "challenge_7d", "iap", study_day(now_utc()))
+        start_challenge(db, user, "challenge_7d_1k", "iap", study_day(now_utc()))
 
 
 def test_unknown_product_raises_its_own_error(db, user):
@@ -112,7 +124,7 @@ def test_join_by_credit_endpoint(client, auth, db):
     move(db, user, 7000, "purchase")
     db.commit()
 
-    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d_1k"})
     assert r.status_code == 200
     assert r.json()["paid_with"] == "credit"
     db.refresh(user)
@@ -120,7 +132,7 @@ def test_join_by_credit_endpoint(client, auth, db):
 
 
 def test_join_by_credit_without_balance_is_payment_required(client, auth):
-    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d_1k"})
     assert r.status_code == 402
 
 
@@ -139,9 +151,9 @@ def test_joining_while_active_is_a_conflict_not_payment_required(client, auth, d
     user = db.query(User).one()
     move(db, user, 20000, "purchase")
     db.commit()
-    client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    client.post("/challenges", headers=auth, json={"product_id": "challenge_7d_1k"})
 
-    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d_1k"})
     assert r.status_code == 409
     db.refresh(user)
     assert user.credit_balance == 13000        # 두 번째 참가비는 빠지지 않았다
@@ -152,5 +164,5 @@ def test_current_challenge_endpoint(client, auth, db):
     user = db.query(User).one()
     move(db, user, 7000, "purchase")
     db.commit()
-    client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    client.post("/challenges", headers=auth, json={"product_id": "challenge_7d_1k"})
     assert client.get("/challenges/current", headers=auth).json()["status"] == "active"

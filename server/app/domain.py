@@ -26,10 +26,24 @@ class ChallengeSpec(NamedTuple):
     completion_bonus: int   # 전일 달성 시 추가 적립. IAP 참가에만 지급
 
 
-# 선 결제 → 인앱 크레딧 페이백. daily_payback * days 는 price 를 넘지 않는다.
+# 선 결제 → 인앱 크레딧 페이백.
+#
+# 기간 × 하루 배팅액의 2차원 격자다. 참가비는 언제나 days * daily_payback 이므로
+# 전일 달성자는 낸 만큼을 정확히 돌려받고, 완주 보너스만 순이득이 된다.
+# 보너스 비율은 기간에 비례한다 — 7일 0%, 14일 5%, 30일 10%.
+_BONUS_RATE = {7: 0.0, 14: 0.05, 30: 0.10}
+
+
+def _spec(days: int, daily: int) -> ChallengeSpec:
+    price = days * daily
+    return ChallengeSpec(days=days, price=price, daily_payback=daily,
+                         completion_bonus=int(price * _BONUS_RATE[days]))
+
+
 CHALLENGE_PRODUCTS: dict[str, ChallengeSpec] = {
-    "challenge_7d": ChallengeSpec(days=7, price=7000, daily_payback=1000, completion_bonus=0),
-    "challenge_30d": ChallengeSpec(days=30, price=30000, daily_payback=1000, completion_bonus=3000),
+    f"challenge_{days}d_{daily // 1000}k": _spec(days, daily)
+    for days in (7, 14, 30)
+    for daily in (1000, 2000, 3000)
 }
 
 GRANTING_EVENT_TYPES = {"INITIAL_PURCHASE", "NON_RENEWING_PURCHASE"}

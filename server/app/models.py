@@ -146,7 +146,7 @@ class Challenge(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    product_id: Mapped[str] = mapped_column(String(32))     # challenge_7d | challenge_30d
+    product_id: Mapped[str] = mapped_column(String(32))     # challenge_7d_1k | challenge_30d_3k 등
     entry_amount: Mapped[int] = mapped_column(Integer)      # 낸 참가비 (원)
     daily_payback: Mapped[int] = mapped_column(Integer)     # 하루 달성 시 적립액
     completion_bonus: Mapped[int] = mapped_column(Integer, default=0)

@@ -4,7 +4,7 @@ from app.models import Challenge, CreditLedger, Purchase, User
 HEADERS = {"Authorization": f"Bearer {settings.revenuecat_webhook_secret}"}
 
 
-def event(user_id, event_id="evt-1", product_id="challenge_7d",
+def event(user_id, event_id="evt-1", product_id="challenge_7d_1k",
           type_="NON_RENEWING_PURCHASE"):
     return {"event": {"id": event_id, "type": type_,
                       "app_user_id": user_id, "product_id": product_id}}
