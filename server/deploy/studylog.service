@@ -1,0 +1,13 @@
+[Unit]
+Description=StudyLog API
+After=network.target
+
+[Service]
+User=studylog
+WorkingDirectory=/srv/studylog/server
+EnvironmentFile=/srv/studylog/server/.env
+ExecStart=/srv/studylog/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
