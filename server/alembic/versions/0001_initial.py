@@ -146,7 +146,7 @@ def upgrade() -> None:
     op.create_table(
         "purchases",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id"), nullable=True),
         sa.Column("revenuecat_event_id", sa.String(length=64), nullable=False, unique=True),
         sa.Column("product_id", sa.String(length=32), nullable=False),
         sa.Column("amount", sa.Integer(), nullable=False),

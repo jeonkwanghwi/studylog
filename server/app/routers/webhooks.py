@@ -36,10 +36,12 @@ def revenuecat(
     if db.query(Purchase).filter_by(revenuecat_event_id=event_id).count():
         return {"started": False}      # 웹훅은 재전송된다. 멱등이어야 한다
 
-    # 아래 두 경우는 200으로 확정하면 안 된다. 200은 RevenueCat에게 "처리 끝났으니
+    # 모르는 상품은 200으로 확정하면 안 된다. 200은 RevenueCat에게 "처리 끝났으니
     # 그만 보내라"는 뜻인데, 돈은 이미 애플·구글이 걷어갔다. 서버가 아직 모르는
     # 신규 SKU를 앱이 먼저 출시한 상황이면 기록 없이 돈만 걷힌다. 5xx로 답해서
-    # 서버가 따라잡을 때까지 재시도를 받는다.
+    # 서버가 따라잡을 때까지 재시도를 받는다 — 이 경우는 시간이 지나면 실제로
+    # 해소된다. 모르는 유저는 다르다(아래 참고): 그 id는 영원히 안 풀리므로
+    # 재시도를 유도하는 5xx가 의미 없다.
     spec = CHALLENGE_PRODUCTS.get(event.get("product_id"))
     if spec is None:
         logger.error("알 수 없는 상품으로 결제됨 — 재시도 유도: %s",
@@ -48,9 +50,16 @@ def revenuecat(
 
     user = db.get(User, str(event.get("app_user_id")))
     if user is None:
-        logger.error("알 수 없는 유저의 결제 — 재시도 유도: %s",
-                     event.get("app_user_id"))
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "unknown user")
+        # 상품과 달리 이 id는 앞으로도 절대 풀리지 않는다 — 재시도를 유도해봐야
+        # 소용없다. ChallengeAlreadyActive와 같은 패턴으로 영수증만 남기고 200.
+        logger.error("알 수 없는 유저의 결제 user=%s transaction_id=%s",
+                     event.get("app_user_id"), event.get("transaction_id"))
+        db.add(Purchase(user_id=None, revenuecat_event_id=event_id,
+                        product_id=event["product_id"], amount=spec.price,
+                        challenge_id=None,
+                        transaction_id=str(event.get("transaction_id"))))
+        db.commit()
+        return {"started": False}
 
     charged = event.get("price", event.get("price_in_purchased_currency"))
     if charged is not None and int(charged) != spec.price:

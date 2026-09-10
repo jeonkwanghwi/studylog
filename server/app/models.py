@@ -178,7 +178,8 @@ class Purchase(Base):
     __tablename__ = "purchases"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    # 모르는 app_user_id로 결제가 들어올 수 있다 — 그래도 영수증은 남겨야 한다.
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     revenuecat_event_id: Mapped[str] = mapped_column(String(64), unique=True)
     product_id: Mapped[str] = mapped_column(String(32))
     amount: Mapped[int] = mapped_column(Integer)

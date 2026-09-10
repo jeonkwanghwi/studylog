@@ -66,9 +66,16 @@ def test_unknown_product_asks_for_a_retry(client, auth, db):
     assert db.query(Challenge).count() == 0
 
 
-def test_unknown_user_asks_for_a_retry(client, auth):
+def test_unknown_user_is_recorded_without_starting_a_challenge(client, auth, db):
+    """알 수 없는 app_user_id는 상품과 다르다 — 재시도해도 영원히 안 풀린다.
+    재시도를 유도하는 5xx 대신 영수증만 남기고 200으로 닫는다."""
     r = client.post("/webhooks/revenuecat", headers=HEADERS, json=event("no-such-user"))
-    assert r.status_code == 503
+    assert r.status_code == 200 and r.json()["started"] is False
+
+    purchase = db.query(Purchase).one()
+    assert purchase.user_id is None
+    assert purchase.challenge_id is None
+    assert db.query(Challenge).count() == 0
 
 
 def test_over_cap_iap_purchase_still_starts_a_challenge(client, auth, db):
