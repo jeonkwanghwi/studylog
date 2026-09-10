@@ -25,7 +25,11 @@
 - 이의제기가 만드는 시각은 항상 유저에게 불리한 쪽: 시작 샷은 **재판정 시각**, 종료 샷은 **최초 수신 시각**
 - 목표 시간 변경은 `pending_goal_minutes`에 쓰고 **다음 04:00 정산 직후** 승격
 - 결제는 **선 결제 → 인앱 크레딧 페이백**이다. 유저가 챌린지 참가비를 먼저 내고, 목표를 달성한 날마다 `daily_payback`이 크레딧으로 적립된다. 실패한 날의 몫은 서비스에 귀속된다
-- SKU: `challenge_7d` = 7일 ₩7,000 / 일일 ₩1,000 / 완주 보너스 없음. `challenge_30d` = 30일 ₩30,000 / 일일 ₩1,000 / 완주 보너스 ₩3,000
+- 상품은 **기간(7·14·30일) × 하루 배팅액(₩1,000·₩2,000·₩3,000)** 9종이다. SKU 이름은 `challenge_<일수>d_<배팅액>k`, 참가비는 `일수 × 배팅액`
+- 완주 보너스는 **기간에 비례한 비율**이다 — 7일 0%, 14일 5%, 30일 10%. 배팅액이 변수이므로 정액 보너스는 성립하지 않는다
+- `CHALLENGE_PRODUCTS`의 `price`는 애플·구글에 실제 등록된 가격과 1원까지 같아야 한다. 다르면 `entry_amount`가 거짓을 기록한다
+- 참가비 상한 두 겹: **카탈로그 상한 `settings.max_entry_amount`(₩50,000)** 는 상품 자체를 만들지 않아 스토어에 등록될 수 없게 하고, **첫 챌린지 상한 `settings.first_challenge_max_entry`(₩30,000)** 는 완주 경험이 없는 유저에게만 적용된다
+- **첫 챌린지 상한은 IAP 웹훅에서 강제하지 않는다.** 웹훅이 도착한 시점에 애플·구글은 이미 돈을 걷어갔다. 거기서 거부하면 유저는 결제하고 아무것도 못 받는다. 웹훅은 실제 결제를 무조건 인정하고 경고만 로그에 남긴다. 상한은 카탈로그 조회와 크레딧 참가에서만 강제한다
 - **완주 보너스는 `paid_with == "iap"`인 챌린지에만 준다.** 크레딧으로 참가한 챌린지에 주면 크레딧이 무한 증식한다
 - 유저당 `active` 챌린지는 최대 1개. 챌린지 없이도 앱은 정상 동작하고 크레딧만 안 쌓인다
 - streak 복구는 **크레딧 ₩2,000** 차감, 정산 후 **24시간** 이내. 복구해도 그날 `payback_amount`는 0으로 남는다
@@ -187,6 +191,8 @@ class Settings(BaseSettings):
     revenuecat_webhook_secret: str = "dev-webhook-secret"
     restore_window_hours: int = 24
     restore_credit_cost: int = 2000      # streak 복구 비용 (원)
+    max_entry_amount: int = 50000        # 이보다 비싼 조합은 상품으로 만들지 않는다
+    first_challenge_max_entry: int = 30000   # 완주 경험이 없는 유저의 상한
 
     # 알림
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
@@ -532,7 +538,8 @@ from datetime import UTC, date as Date
 from datetime import datetime
 
 from sqlalchemy import (JSON, Date as SADate, DateTime, Float, ForeignKey,
-                        Integer, String, Text, TypeDecorator, UniqueConstraint)
+                        Index, Integer, String, Text, TypeDecorator,
+                        UniqueConstraint, text)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -665,6 +672,12 @@ class DailyRecord(Base):
 
 class Challenge(Base):
     __tablename__ = "challenges"
+    # 활성 챌린지는 유저당 1개. 애플리케이션 검사만으로는 웹훅 동시 도착을 막지 못한다.
+    __table_args__ = (
+        Index("uq_one_active_challenge_per_user", "user_id", unique=True,
+              sqlite_where=text("status = 'active'"),
+              postgresql_where=text("status = 'active'")),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
@@ -2268,6 +2281,41 @@ def test_cannot_appeal_after_the_day_is_settled(client, auth, jpeg, db, judge):
     assert appeal(client, auth, photo_id).status_code == 409
 
 
+def test_appeal_on_a_start_shot_is_rejected_when_another_session_is_open(
+    client, auth, jpeg, db, judge
+):
+    """통과시켜도 반영할 데가 없다. AI를 부르기 전에 막아야 이의제기가 보존된다."""
+    judge.verdict = Verdict("fail", 0.95, "게임입니다.", {})
+    stale_photo_id = start(client, auth, jpeg)["photo_id"]
+
+    judge.verdict = Verdict("pass", 0.9, "책상입니다.", {})
+    start(client, auth, jpeg)                      # 다른 세션이 열린다
+
+    r = appeal(client, auth, stale_photo_id)
+    assert r.status_code == 409
+    assert db.query(VerdictRow).filter_by(photo_id=stale_photo_id, attempt=2).count() == 0
+    assert db.query(StudySession).count() == 1
+
+
+def test_appeal_on_an_end_shot_is_rejected_when_the_session_already_closed(
+    client, auth, jpeg, db, judge
+):
+    session_id = start(client, auth, jpeg)["session"]["id"]
+
+    judge.verdict = Verdict("fail", 0.95, "음식입니다.", {})
+    stale_end_id = client.post(f"/sessions/{session_id}/end", headers=auth,
+                               files={"image": ("e.jpg", jpeg, "image/jpeg")}
+                               ).json()["photo_id"]
+
+    judge.verdict = Verdict("pass", 0.9, "노트입니다.", {})
+    client.post(f"/sessions/{session_id}/end", headers=auth,
+                files={"image": ("e2.jpg", jpeg, "image/jpeg")})   # 세션이 닫힌다
+
+    r = appeal(client, auth, stale_end_id)
+    assert r.status_code == 409
+    assert db.query(VerdictRow).filter_by(photo_id=stale_end_id, attempt=2).count() == 0
+
+
 def test_failed_appeal_changes_nothing(client, auth, jpeg, db, judge):
     judge.verdict = Verdict("fail", 0.95, "게임입니다.", {})
     photo_id = start(client, auth, jpeg)["photo_id"]
@@ -2306,7 +2354,7 @@ from app.config import settings
 from app.db import get_db
 from app.judge.base import JudgeProvider, get_judge, is_pass, judge_photo
 from app.models import DailyRecord, Photo, StudySession, User, Verdict
-from app.routers.sessions import close_session
+from app.routers.sessions import _open_session, close_session
 from app.schemas import AppealIn, JudgeResultOut, SessionOut
 from app.security import get_current_user
 from app.storage import PhotoStorage, get_storage
@@ -2335,6 +2383,14 @@ async def appeal_photo(
     day = study_day(photo.received_at)
     if db.query(DailyRecord).filter_by(user_id=user.id, date=day).count():
         raise HTTPException(status.HTTP_409_CONFLICT, "이미 정산된 날입니다")
+
+    # 통과시켜도 반영할 세션이 없으면 판정 전에 막는다. 그러지 않으면 AI 호출을
+    # 낭비하고, 단 한 번뿐인 이의제기를 아무 효과 없이 소모시킨다.
+    session = _open_session(db, user.id)
+    if photo.kind == "start" and session is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "이미 진행 중인 세션이 있습니다")
+    if photo.kind == "end" and session is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "이미 종료된 세션입니다")
 
     rejudged_at = now_utc()
     verdict = await judge_photo(judge, storage.get(photo.s3_key), body.text)
@@ -2389,8 +2445,8 @@ def _apply_passed_appeal(
 
 - [ ] **Step 5: 테스트 통과 확인**
 
-Run: `cd server && python -m pytest tests/test_appeal.py -v`
-Expected: PASS (8 passed)
+Run: `cd server && .venv/bin/python -m pytest tests/test_appeal.py -v`
+Expected: PASS (10 passed)
 
 - [ ] **Step 6: 커밋**
 
@@ -3023,7 +3079,8 @@ git commit -m "feat(server): 그룹 피드와 사진 조회 URL"
 ```python
 import pytest
 
-from app.credits import move, start_challenge
+from app.credits import (ChallengeAlreadyActive, InsufficientCredit,
+                         UnknownProduct, move, start_challenge)
 from app.domain import CHALLENGE_PRODUCTS
 from app.models import Challenge, CreditLedger, User
 from app.time_utils import now_utc, study_day
@@ -3037,11 +3094,62 @@ def user(db):
     return u
 
 
-def test_product_table_matches_the_spec():
-    seven = CHALLENGE_PRODUCTS["challenge_7d"]
-    assert (seven.days, seven.price, seven.daily_payback, seven.completion_bonus) == (7, 7000, 1000, 0)
-    thirty = CHALLENGE_PRODUCTS["challenge_30d"]
-    assert (thirty.days, thirty.price, thirty.daily_payback, thirty.completion_bonus) == (30, 30000, 1000, 3000)
+def test_catalogue_excludes_combinations_over_the_cap():
+    """상품 자체를 안 만들면 스토어에 등록될 수 없고, 애플이 돈을 걷은 뒤에
+    거절해야 하는 상황이 원천적으로 사라진다."""
+    assert set(CHALLENGE_PRODUCTS) == {
+        "challenge_7d_1k", "challenge_7d_2k", "challenge_7d_3k",
+        "challenge_14d_1k", "challenge_14d_2k", "challenge_14d_3k",
+        "challenge_30d_1k",
+    }
+    assert all(spec.price <= 50000 for spec in CHALLENGE_PRODUCTS.values())
+
+
+def test_entry_fee_is_always_days_times_daily_stake():
+    """전일 달성자가 낸 만큼 정확히 돌려받는다는 약속의 근거다."""
+    for name, spec in CHALLENGE_PRODUCTS.items():
+        assert spec.price == spec.days * spec.daily_payback, name
+
+
+def test_completion_bonus_scales_with_duration_not_a_flat_amount():
+    assert CHALLENGE_PRODUCTS["challenge_7d_3k"].completion_bonus == 0
+    assert CHALLENGE_PRODUCTS["challenge_14d_2k"].completion_bonus == 1400
+    assert CHALLENGE_PRODUCTS["challenge_30d_1k"].completion_bonus == 3000
+
+
+def test_first_challenge_cap_hides_the_biggest_products(client, auth, db):
+    names = {p["product_id"] for p in client.get("/challenges/products",
+                                                 headers=auth).json()}
+    assert "challenge_14d_3k" not in names      # 42,000 > 30,000
+    assert "challenge_30d_1k" in names          # 30,000 == 상한
+
+
+def test_completing_a_challenge_unlocks_the_bigger_products(client, auth, db):
+    from app.models import Challenge
+
+    user = db.query(User).one()
+    db.add(Challenge(user_id=user.id, product_id="challenge_7d_1k",
+                     entry_amount=7000, daily_payback=1000, completion_bonus=0,
+                     total_days=7, started_on=study_day(now_utc()),
+                     ends_on=study_day(now_utc()), paid_with="iap",
+                     status="completed"))
+    db.commit()
+
+    names = {p["product_id"] for p in client.get("/challenges/products",
+                                                 headers=auth).json()}
+    assert "challenge_14d_3k" in names
+
+
+def test_credit_entry_over_the_first_challenge_cap_is_forbidden(client, auth, db):
+    user = db.query(User).one()
+    move(db, user, 50000, "purchase")
+    db.commit()
+
+    r = client.post("/challenges", headers=auth,
+                    json={"product_id": "challenge_14d_3k"})
+    assert r.status_code == 403
+    db.refresh(user)
+    assert user.credit_balance == 50000
 
 
 def test_daily_payback_never_exceeds_entry_per_day():
@@ -3072,12 +3180,12 @@ def test_move_records_running_balance(db, user):
 def test_balance_never_goes_negative(db, user):
     move(db, user, 1000, "purchase")
     db.commit()
-    with pytest.raises(ValueError):
+    with pytest.raises(InsufficientCredit):
         move(db, user, -5000, "entry")
 
 
 def test_iap_entry_carries_the_completion_bonus(db, user):
-    challenge = start_challenge(db, user, "challenge_30d", "iap", study_day(now_utc()))
+    challenge = start_challenge(db, user, "challenge_30d_1k", "iap", study_day(now_utc()))
     db.commit()
 
     assert challenge.status == "active"
@@ -3089,9 +3197,9 @@ def test_iap_entry_carries_the_completion_bonus(db, user):
 
 def test_credit_entry_gets_no_completion_bonus(db, user):
     """크레딧 참가에도 보너스를 주면 완주자가 크레딧을 무한 증식시킨다."""
-    move(db, user, 30000, "purchase")
+    move(db, user, 30000, "purchase")          # challenge_30d_1k 참가비와 동일
     db.commit()
-    challenge = start_challenge(db, user, "challenge_30d", "credit", study_day(now_utc()))
+    challenge = start_challenge(db, user, "challenge_30d_1k", "credit", study_day(now_utc()))
     db.commit()
 
     assert challenge.completion_bonus == 0
@@ -3100,15 +3208,33 @@ def test_credit_entry_gets_no_completion_bonus(db, user):
 
 
 def test_credit_entry_requires_enough_balance(db, user):
-    with pytest.raises(ValueError):
-        start_challenge(db, user, "challenge_30d", "credit", study_day(now_utc()))
+    with pytest.raises(InsufficientCredit):
+        start_challenge(db, user, "challenge_30d_1k", "credit", study_day(now_utc()))
+
+
+def test_failed_credit_entry_leaves_no_challenge_row(db, user):
+    """검사가 행 생성보다 앞서야 한다. 뒤에 있으면 호출자가 예외를 잡고 commit 할 때
+    공짜 챌린지가 남는다."""
+    move(db, user, 1000, "purchase")
+    db.commit()
+    with pytest.raises(InsufficientCredit):
+        start_challenge(db, user, "challenge_30d_1k", "credit", study_day(now_utc()))
+    db.commit()
+
+    assert db.query(Challenge).count() == 0
+    assert user.credit_balance == 1000
 
 
 def test_only_one_active_challenge_per_user(db, user):
-    start_challenge(db, user, "challenge_7d", "iap", study_day(now_utc()))
+    start_challenge(db, user, "challenge_7d_1k", "iap", study_day(now_utc()))
     db.commit()
-    with pytest.raises(ValueError):
-        start_challenge(db, user, "challenge_7d", "iap", study_day(now_utc()))
+    with pytest.raises(ChallengeAlreadyActive):
+        start_challenge(db, user, "challenge_7d_1k", "iap", study_day(now_utc()))
+
+
+def test_unknown_product_raises_its_own_error(db, user):
+    with pytest.raises(UnknownProduct):
+        start_challenge(db, user, "challenge_999", "iap", study_day(now_utc()))
 
 
 def test_join_by_credit_endpoint(client, auth, db):
@@ -3116,7 +3242,7 @@ def test_join_by_credit_endpoint(client, auth, db):
     move(db, user, 7000, "purchase")
     db.commit()
 
-    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d_1k"})
     assert r.status_code == 200
     assert r.json()["paid_with"] == "credit"
     db.refresh(user)
@@ -3124,8 +3250,31 @@ def test_join_by_credit_endpoint(client, auth, db):
 
 
 def test_join_by_credit_without_balance_is_payment_required(client, auth):
-    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d_1k"})
     assert r.status_code == 402
+
+
+def test_unknown_product_is_a_bad_request_not_payment_required(client, auth, db):
+    """402는 결제하면 해결된다는 뜻이다. 없는 상품에 402를 주면 앱이 결제창을 띄우고
+    유저는 돈만 내고 아무것도 못 받는다."""
+    user = db.query(User).one()
+    move(db, user, 30000, "purchase")
+    db.commit()
+
+    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_999"})
+    assert r.status_code == 400
+
+
+def test_joining_while_active_is_a_conflict_not_payment_required(client, auth, db):
+    user = db.query(User).one()
+    move(db, user, 20000, "purchase")
+    db.commit()
+    client.post("/challenges", headers=auth, json={"product_id": "challenge_7d_1k"})
+
+    r = client.post("/challenges", headers=auth, json={"product_id": "challenge_7d_1k"})
+    assert r.status_code == 409
+    db.refresh(user)
+    assert user.credit_balance == 13000        # 두 번째 참가비는 빠지지 않았다
 
 
 def test_current_challenge_endpoint(client, auth, db):
@@ -3133,7 +3282,7 @@ def test_current_challenge_endpoint(client, auth, db):
     user = db.query(User).one()
     move(db, user, 7000, "purchase")
     db.commit()
-    client.post("/challenges", headers=auth, json={"product_id": "challenge_7d"})
+    client.post("/challenges", headers=auth, json={"product_id": "challenge_7d_1k"})
     assert client.get("/challenges/current", headers=auth).json()["status"] == "active"
 ```
 
@@ -3148,7 +3297,7 @@ from app.models import Challenge, CreditLedger, Purchase, User
 HEADERS = {"Authorization": f"Bearer {settings.revenuecat_webhook_secret}"}
 
 
-def event(user_id, event_id="evt-1", product_id="challenge_7d",
+def event(user_id, event_id="evt-1", product_id="challenge_7d_1k",
           type_="NON_RENEWING_PURCHASE"):
     return {"event": {"id": event_id, "type": type_,
                       "app_user_id": user_id, "product_id": product_id}}
@@ -3201,16 +3350,18 @@ def test_unrelated_event_types_are_ignored(client, auth, db):
     assert db.query(Challenge).count() == 0
 
 
-def test_unknown_product_starts_nothing(client, auth, db):
+def test_unknown_product_asks_for_a_retry(client, auth, db):
+    """200을 주면 RevenueCat이 재시도를 멈춘다. 돈은 이미 걷혔는데 기록이 없어진다."""
     user = db.query(User).one()
     r = client.post("/webhooks/revenuecat", headers=HEADERS,
                     json=event(user.id, product_id="challenge_999"))
-    assert r.json()["started"] is False
+    assert r.status_code == 503
+    assert db.query(Challenge).count() == 0
 
 
-def test_unknown_user_is_ignored(client, auth):
+def test_unknown_user_asks_for_a_retry(client, auth):
     r = client.post("/webhooks/revenuecat", headers=HEADERS, json=event("no-such-user"))
-    assert r.status_code == 200 and r.json()["started"] is False
+    assert r.status_code == 503
 
 
 def test_second_purchase_while_active_is_recorded_but_starts_nothing(client, auth, db):
@@ -3237,6 +3388,8 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.credits'`
 ```python
 from typing import NamedTuple
 
+from app.config import settings
+
 
 class ChallengeSpec(NamedTuple):
     days: int
@@ -3245,10 +3398,28 @@ class ChallengeSpec(NamedTuple):
     completion_bonus: int   # 전일 달성 시 추가 적립. IAP 참가에만 지급
 
 
-# 선 결제 → 인앱 크레딧 페이백. daily_payback * days 는 price 를 넘지 않는다.
+# 선 결제 → 인앱 크레딧 페이백.
+#
+# 기간 × 하루 배팅액의 2차원 격자다. 참가비는 언제나 days * daily_payback 이므로
+# 전일 달성자는 낸 만큼을 정확히 돌려받고, 완주 보너스만 순이득이 된다.
+# 보너스 비율은 기간에 비례한다 — 7일 0%, 14일 5%, 30일 10%.
+_BONUS_RATE = {7: 0.0, 14: 0.05, 30: 0.10}
+
+
+def _spec(days: int, daily: int) -> ChallengeSpec:
+    price = days * daily
+    return ChallengeSpec(days=days, price=price, daily_payback=daily,
+                         completion_bonus=int(price * _BONUS_RATE[days]))
+
+
+# settings.max_entry_amount 를 넘는 조합은 상품으로 만들지 않는다. 스토어에 등록조차
+# 되지 않으므로 살 수가 없다 — 애플이 돈을 걷은 뒤에 거절하는 상황이 원천적으로 없다.
 CHALLENGE_PRODUCTS: dict[str, ChallengeSpec] = {
-    "challenge_7d": ChallengeSpec(days=7, price=7000, daily_payback=1000, completion_bonus=0),
-    "challenge_30d": ChallengeSpec(days=30, price=30000, daily_payback=1000, completion_bonus=3000),
+    name: spec
+    for days in (7, 14, 30)
+    for daily in (1000, 2000, 3000)
+    for name, spec in [(f"challenge_{days}d_{daily // 1000}k", _spec(days, daily))]
+    if spec.price <= settings.max_entry_amount
 }
 
 GRANTING_EVENT_TYPES = {"INITIAL_PURCHASE", "NON_RENEWING_PURCHASE"}
@@ -3263,8 +3434,29 @@ from datetime import date as Date, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.domain import CHALLENGE_PRODUCTS
 from app.models import Challenge, CreditLedger, User
+
+
+class ChallengeError(Exception):
+    """호출자가 HTTP 상태를 고를 수 있도록 원인을 구분한다."""
+
+
+class UnknownProduct(ChallengeError):
+    pass
+
+
+class ChallengeAlreadyActive(ChallengeError):
+    pass
+
+
+class InsufficientCredit(ChallengeError):
+    pass
+
+
+class EntryTooLargeForFirstChallenge(ChallengeError):
+    pass
 
 
 def move(db: Session, user: User, delta: int, reason: str,
@@ -3275,7 +3467,7 @@ def move(db: Session, user: User, delta: int, reason: str,
     """
     new_balance = user.credit_balance + delta
     if new_balance < 0:
-        raise ValueError("크레딧 잔액이 부족합니다")
+        raise InsufficientCredit()
 
     user.credit_balance = new_balance
     row = CreditLedger(user_id=user.id, delta=delta, reason=reason,
@@ -3291,14 +3483,36 @@ def active_challenge(db: Session, user_id: str) -> Challenge | None:
               .one_or_none())
 
 
+def entry_limit(db: Session, user: User) -> int:
+    """이 유저가 걸 수 있는 최대 참가비.
+
+    한 사이클도 겪어보지 않은 유저가 4만원을 거는 것은 동기부여가 아니라
+    환불 요구를 만드는 길이다. 한 번 완주하면 풀린다.
+    """
+    completed = db.query(Challenge).filter_by(user_id=user.id, status="completed").count()
+    if completed:
+        return settings.max_entry_amount
+    return settings.first_challenge_max_entry
+
+
 def start_challenge(db: Session, user: User, product_id: str,
                     paid_with: str, today: Date) -> Challenge:
-    """챌린지를 연다. paid_with 가 'credit' 이면 참가비를 크레딧에서 뺀다."""
+    """챌린지를 연다. paid_with 가 'credit' 이면 참가비를 크레딧에서 뺀다.
+
+    실패할 수 있는 검사는 전부 행을 만들기 전에 끝낸다. 행을 flush 한 뒤에 예외가
+    나면, 호출자가 그 예외를 잡고 commit 하는 순간 공짜 챌린지가 남는다.
+    """
     spec = CHALLENGE_PRODUCTS.get(product_id)
     if spec is None:
-        raise ValueError(f"unknown product: {product_id}")
+        raise UnknownProduct(product_id)
     if active_challenge(db, user.id) is not None:
-        raise ValueError("이미 진행 중인 챌린지가 있습니다")
+        raise ChallengeAlreadyActive()
+    # 첫 챌린지 상한은 크레딧 참가에만 건다. IAP는 이미 결제가 끝난 뒤에
+    # 웹훅이 오므로, 거기서 거절하면 유저가 돈만 내고 아무것도 못 받는다.
+    if paid_with == "credit" and spec.price > entry_limit(db, user):
+        raise EntryTooLargeForFirstChallenge()
+    if paid_with == "credit" and user.credit_balance < spec.price:
+        raise InsufficientCredit()
 
     challenge = Challenge(
         user_id=user.id, product_id=product_id, entry_amount=spec.price,
@@ -3326,6 +3540,14 @@ class ChallengeJoinIn(BaseModel):
     product_id: str = Field(min_length=1, max_length=32)
 
 
+class ChallengeProductOut(BaseModel):
+    product_id: str
+    days: int
+    daily_payback: int
+    price: int
+    completion_bonus: int
+
+
 class ChallengeOut(BaseModel):
     id: str
     product_id: str
@@ -3347,10 +3569,13 @@ class ChallengeOut(BaseModel):
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.credits import active_challenge, start_challenge
+from app.credits import (ChallengeAlreadyActive, EntryTooLargeForFirstChallenge,
+                         InsufficientCredit, UnknownProduct, active_challenge,
+                         entry_limit, start_challenge)
 from app.db import get_db
+from app.domain import CHALLENGE_PRODUCTS
 from app.models import Challenge, User
-from app.schemas import ChallengeJoinIn, ChallengeOut
+from app.schemas import ChallengeJoinIn, ChallengeOut, ChallengeProductOut
 from app.security import get_current_user
 from app.time_utils import now_utc, study_day
 
@@ -3367,10 +3592,39 @@ def join_with_credit(
     try:
         challenge = start_challenge(db, user, body.product_id, "credit",
                                     study_day(now_utc()))
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(exc))
+    except UnknownProduct:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "없는 상품입니다")
+    except ChallengeAlreadyActive:
+        raise HTTPException(status.HTTP_409_CONFLICT, "이미 진행 중인 챌린지가 있습니다")
+    except EntryTooLargeForFirstChallenge:
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "첫 챌린지는 더 작은 금액으로 시작해야 합니다")
+    except InsufficientCredit:
+        # 402는 "결제하면 해결된다"는 신호다. 잔액 부족일 때만 써야
+        # 앱이 결제창을 띄웠는데 아무것도 못 받는 상황이 안 생긴다.
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "크레딧이 부족합니다")
     db.commit()
     return challenge
+
+
+@router.get("/products", response_model=list[ChallengeProductOut])
+def products(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[ChallengeProductOut]:
+    """이 유저가 지금 참가할 수 있는 상품만 준다.
+
+    첫 챌린지 상한이 유저마다 다르므로 앱이 표를 하드코딩할 수 없다.
+    무엇을 보여줄지는 서버가 정한다.
+    """
+    limit = entry_limit(db, user)
+    return [
+        ChallengeProductOut(product_id=name, days=spec.days,
+                            daily_payback=spec.daily_payback, price=spec.price,
+                            completion_bonus=spec.completion_bonus)
+        for name, spec in sorted(CHALLENGE_PRODUCTS.items(),
+                                 key=lambda kv: (kv[1].days, kv[1].daily_payback))
+        if spec.price <= limit
+    ]
 
 
 @router.get("/current", response_model=ChallengeOut | None)
@@ -3390,7 +3644,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.credits import start_challenge
+from app.credits import ChallengeAlreadyActive, entry_limit, start_challenge
 from app.db import get_db
 from app.domain import CHALLENGE_PRODUCTS, GRANTING_EVENT_TYPES
 from app.models import Purchase, User
@@ -3414,26 +3668,39 @@ def revenuecat(
     if event.get("type") not in GRANTING_EVENT_TYPES:
         return {"started": False}
 
-    spec = CHALLENGE_PRODUCTS.get(event.get("product_id"))
-    if spec is None:
-        logger.warning("알 수 없는 상품: %s", event.get("product_id"))
-        return {"started": False}
-
     event_id = str(event.get("id"))
     if db.query(Purchase).filter_by(revenuecat_event_id=event_id).count():
         return {"started": False}      # 웹훅은 재전송된다. 멱등이어야 한다
 
+    # 아래 두 경우는 200으로 확정하면 안 된다. 200은 RevenueCat에게 "처리 끝났으니
+    # 그만 보내라"는 뜻인데, 돈은 이미 애플·구글이 걷어갔다. 서버가 아직 모르는
+    # 신규 SKU를 앱이 먼저 출시한 상황이면 기록 없이 돈만 걷힌다. 5xx로 답해서
+    # 서버가 따라잡을 때까지 재시도를 받는다.
+    spec = CHALLENGE_PRODUCTS.get(event.get("product_id"))
+    if spec is None:
+        logger.error("알 수 없는 상품으로 결제됨 — 재시도 유도: %s",
+                     event.get("product_id"))
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "unknown product")
+
     user = db.get(User, str(event.get("app_user_id")))
     if user is None:
-        logger.warning("알 수 없는 유저의 구매: %s", event.get("app_user_id"))
-        return {"started": False}
+        logger.error("알 수 없는 유저의 결제 — 재시도 유도: %s",
+                     event.get("app_user_id"))
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "unknown user")
+
+    if spec.price > entry_limit(db, user):
+        # 상한을 넘겼지만 돈은 이미 걷혔다. 인정하고 로그만 남긴다 —
+        # 여기서 거절하면 유저가 결제하고 아무것도 못 받는다.
+        logger.warning("첫 챌린지 상한 초과 결제 user=%s product=%s",
+                       user.id, event["product_id"])
 
     try:
         challenge = start_challenge(db, user, event["product_id"], "iap",
                                     study_day(now_utc()))
-    except ValueError as exc:
-        # 활성 챌린지가 이미 있는 경우. 영수증은 남기되 두 번째를 열지 않는다.
-        logger.warning("챌린지 생성 실패 user=%s: %s", user.id, exc)
+    except ChallengeAlreadyActive:
+        # 이건 진짜 종결 상태다. 돈은 실제로 걷혔으니 영수증은 남기되
+        # 두 번째 챌린지는 열지 않는다.
+        logger.warning("활성 챌린지가 있어 두 번째를 열지 않음 user=%s", user.id)
         db.add(Purchase(user_id=user.id, revenuecat_event_id=event_id,
                         product_id=event["product_id"], amount=spec.price,
                         challenge_id=None))
@@ -3452,7 +3719,7 @@ def revenuecat(
 - [ ] **Step 7: 테스트 통과 확인**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_challenges.py tests/test_webhooks.py -v`
-Expected: PASS (20 passed)
+Expected: PASS (29 passed)
 
 - [ ] **Step 8: 커밋**
 
@@ -3599,7 +3866,7 @@ def test_success_pays_back_and_writes_a_ledger_row(db, user):
     from app.models import CreditLedger
 
     day = study_day(now_utc()) - timedelta(days=1)
-    challenge = start_challenge(db, user, "challenge_30d", "iap", day)
+    challenge = start_challenge(db, user, "challenge_30d_1k", "iap", day)
     db.commit()
     add_session(db, user, day, 70)
 
@@ -3619,7 +3886,7 @@ def test_failure_pays_back_nothing(db, user):
     from app.models import CreditLedger
 
     day = study_day(now_utc()) - timedelta(days=1)
-    start_challenge(db, user, "challenge_30d", "iap", day)
+    start_challenge(db, user, "challenge_30d_1k", "iap", day)
     db.commit()
     add_session(db, user, day, 10)
 
@@ -3649,7 +3916,7 @@ def test_challenge_closes_with_a_bonus_on_a_perfect_run(db, user):
     from app.models import Challenge, CreditLedger
 
     start = study_day(now_utc()) - timedelta(days=7)
-    challenge = start_challenge(db, user, "challenge_7d", "iap", start)
+    challenge = start_challenge(db, user, "challenge_7d_1k", "iap", start)
     challenge.completion_bonus = 500       # 7일권엔 원래 보너스가 없다. 지급 경로만 검증한다
     db.commit()
 
@@ -3670,7 +3937,7 @@ def test_a_single_miss_forfeits_the_completion_bonus(db, user):
     from app.models import Challenge, CreditLedger
 
     start = study_day(now_utc()) - timedelta(days=7)
-    challenge = start_challenge(db, user, "challenge_7d", "iap", start)
+    challenge = start_challenge(db, user, "challenge_7d_1k", "iap", start)
     challenge.completion_bonus = 500
     db.commit()
 
