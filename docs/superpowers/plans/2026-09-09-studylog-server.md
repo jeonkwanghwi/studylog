@@ -5256,3 +5256,288 @@ git commit -m "feat(server): 배치 CLI와 배포 설정"
 자체 IAP 검증. 전부 스펙 §10의 "v1 이후"에 있다.
 
 **앱(Expo RN)은 이 계획에 없다.** 서버 API가 고정된 뒤 별도 계획으로 쓴다.
+
+---
+
+## Task 21: 환불 처리
+
+**스펙 §4.5가 요구하는데 어떤 태스크도 구현하지 않았다.** 스키마에 `refunded`·`refund`가
+선언돼 있어 "있는 척"만 하고 있었다. 소모성 IAP 환불은 예외가 아니라 일상이다 —
+30일 챌린지를 완주해 크레딧을 챙긴 뒤 애플에 환불을 요청하면, 현금은 돌아가고
+크레딧은 남아 다음 챌린지를 공짜로 참가한다. 반복 가능하다.
+
+**Files:**
+- Modify: `server/app/models.py`, `server/alembic/versions/0001_initial.py`, `server/app/credits.py`, `server/app/routers/webhooks.py`, `server/app/domain.py`
+- Test: `server/tests/test_refunds.py`
+
+**Interfaces:**
+- Consumes: `Challenge`, `CreditLedger`, `Purchase`, `User`, `move`
+- Produces:
+  - `Purchase.transaction_id` (nullable, indexed) — 환불 이벤트를 원 결제와 잇는 열쇠
+  - `User.refund_count` (int, 기본 0)
+  - `app.domain.REFUND_EVENT_TYPES: set[str]`
+  - `app.credits.claw_back(db, user, challenge) -> int` — 회수한 금액
+  - `POST /webhooks/revenuecat` 이 환불 이벤트를 처리
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`server/tests/test_refunds.py`:
+
+```python
+import pytest
+
+from app.config import settings
+from app.credits import move, start_challenge
+from app.models import Challenge, CreditLedger, DailyRecord, Purchase, User
+from app.time_utils import now_utc, study_day
+
+HEADERS = {"Authorization": f"Bearer {settings.revenuecat_webhook_secret}"}
+
+
+def purchase_event(user_id, event_id="evt-buy", product_id="challenge_7d_1k",
+                   txn="txn-1"):
+    return {"event": {"id": event_id, "type": "NON_RENEWING_PURCHASE",
+                      "app_user_id": user_id, "product_id": product_id,
+                      "transaction_id": txn}}
+
+
+def refund_event(user_id, event_id="evt-refund", txn="txn-1"):
+    return {"event": {"id": event_id, "type": "CANCELLATION",
+                      "app_user_id": user_id, "product_id": "challenge_7d_1k",
+                      "transaction_id": txn}}
+
+
+def test_purchase_records_the_transaction_id(client, auth, db):
+    """환불 이벤트를 원 결제와 이을 유일한 열쇠다."""
+    user = db.query(User).one()
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=purchase_event(user.id))
+    assert db.query(Purchase).one().transaction_id == "txn-1"
+
+
+def test_refund_closes_the_challenge_and_claws_back_credit(client, auth, db):
+    user = db.query(User).one()
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=purchase_event(user.id))
+    challenge = db.query(Challenge).one()
+
+    # 이틀치 페이백이 적립된 상태를 만든다
+    for offset in range(2):
+        record = DailyRecord(
+            user_id=user.id, date=study_day(now_utc()), total_minutes=70,
+            goal_minutes=60, result="success", challenge_id=challenge.id,
+            payback_amount=1000, streak_snapshot=offset + 1, settled_at=now_utc(),
+        )
+        record.date = challenge.started_on
+        db.add(record)
+        db.flush()
+        move(db, user, 1000, "payback", record.id)
+        db.expunge(record)
+        db.execute(DailyRecord.__table__.delete().where(
+            DailyRecord.__table__.c.id == record.id))
+    db.commit()
+    assert user.credit_balance == 2000
+
+    r = client.post("/webhooks/revenuecat", headers=HEADERS, json=refund_event(user.id))
+    assert r.status_code == 200
+
+    db.refresh(user)
+    db.refresh(challenge)
+    assert challenge.status == "refunded"
+    assert user.credit_balance == 0
+    assert db.query(CreditLedger).filter_by(reason="refund").one().delta == -2000
+
+
+def test_refund_flags_the_account(client, auth, db):
+    user = db.query(User).one()
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=purchase_event(user.id))
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=refund_event(user.id))
+
+    db.refresh(user)
+    assert user.refund_count == 1
+
+
+def test_claw_back_floors_at_zero_balance(client, auth, db):
+    """이미 쓴 크레딧은 회수할 수 없다. 잔액을 음수로 만들지 않는다."""
+    user = db.query(User).one()
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=purchase_event(user.id))
+    challenge = db.query(Challenge).one()
+
+    record = DailyRecord(user_id=user.id, date=challenge.started_on,
+                         total_minutes=70, goal_minutes=60, result="success",
+                         challenge_id=challenge.id, payback_amount=1000,
+                         streak_snapshot=1, settled_at=now_utc())
+    db.add(record)
+    db.flush()
+    move(db, user, 1000, "payback", record.id)
+    move(db, user, -1000, "entry", None)     # 이미 다 써버렸다
+    db.commit()
+    assert user.credit_balance == 0
+
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=refund_event(user.id))
+    db.refresh(user)
+    assert user.credit_balance == 0
+    assert user.refund_count == 1
+
+
+def test_refund_frees_the_user_to_start_a_new_challenge(client, auth, db):
+    """refunded 는 active 가 아니므로 부분 유니크 인덱스에 걸리지 않는다."""
+    user = db.query(User).one()
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=purchase_event(user.id))
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=refund_event(user.id))
+
+    started = start_challenge(db, user, "challenge_7d_1k", "iap", study_day(now_utc()))
+    db.commit()
+    assert started.status == "active"
+
+
+def test_refund_for_an_unknown_transaction_is_acknowledged(client, auth, db):
+    """모르는 거래의 환불은 재시도해도 달라지지 않는다. 로그만 남기고 닫는다."""
+    user = db.query(User).one()
+    r = client.post("/webhooks/revenuecat", headers=HEADERS,
+                    json=refund_event(user.id, txn="txn-nope"))
+    assert r.status_code == 200
+
+
+def test_replayed_refund_claws_back_only_once(client, auth, db):
+    user = db.query(User).one()
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=purchase_event(user.id))
+    challenge = db.query(Challenge).one()
+
+    record = DailyRecord(user_id=user.id, date=challenge.started_on,
+                         total_minutes=70, goal_minutes=60, result="success",
+                         challenge_id=challenge.id, payback_amount=1000,
+                         streak_snapshot=1, settled_at=now_utc())
+    db.add(record)
+    db.flush()
+    move(db, user, 1000, "payback", record.id)
+    db.commit()
+
+    client.post("/webhooks/revenuecat", headers=HEADERS, json=refund_event(user.id))
+    client.post("/webhooks/revenuecat", headers=HEADERS,
+                json=refund_event(user.id, event_id="evt-refund-2"))
+
+    db.refresh(user)
+    assert db.query(CreditLedger).filter_by(reason="refund").count() == 1
+    assert user.refund_count == 1
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd server && .venv/bin/python -m pytest tests/test_refunds.py -v`
+Expected: FAIL — `Purchase` 에 `transaction_id` 가 없다
+
+- [ ] **Step 3: 모델과 마이그레이션 수정**
+
+`server/app/models.py` — `User` 에 추가:
+
+```python
+    refund_count: Mapped[int] = mapped_column(Integer, default=0)
+```
+
+`Purchase` 에 추가:
+
+```python
+    transaction_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+```
+
+`server/alembic/versions/0001_initial.py` 의 `users`·`purchases` 생성문에 같은 컬럼을
+추가한다(제자리 수정 — 배포된 적이 없다). `purchases.transaction_id` 에는 인덱스도 만든다.
+
+- [ ] **Step 4: 회수 로직 작성**
+
+`server/app/domain.py` 에 추가:
+
+```python
+# RevenueCat 이 환불·취소를 알리는 이벤트 타입
+REFUND_EVENT_TYPES = {"CANCELLATION", "REFUND"}
+```
+
+`server/app/credits.py` 에 추가:
+
+```python
+def claw_back(db: Session, user: User, challenge: Challenge) -> int:
+    """환불된 챌린지가 지급한 크레딧을 회수한다.
+
+    이미 써버린 크레딧은 회수할 수 없으므로 잔액에서 뺄 수 있는 만큼만 뺀다.
+    부족분은 로그로 남긴다 — 음수 잔액을 만들면 그 유저는 다시는 아무것도
+    못 사게 되고, 그건 회수가 아니라 계정 파괴다.
+    """
+    granted = sum(
+        row.delta for row in db.query(CreditLedger).filter(
+            CreditLedger.user_id == user.id,
+            CreditLedger.reason.in_(("payback", "bonus")),
+            CreditLedger.ref_id.in_(
+                db.query(DailyRecord.id).filter(
+                    DailyRecord.challenge_id == challenge.id)
+            ) | (CreditLedger.ref_id == challenge.id),
+        )
+    )
+    taken = min(granted, user.credit_balance)
+    if taken:
+        move(db, user, -taken, "refund", challenge.id)
+    if taken < granted:
+        logger.warning(
+            "환불 회수 부족 user=%s challenge=%s 지급=%d 회수=%d",
+            user.id, challenge.id, granted, taken,
+        )
+    challenge.status = "refunded"
+    user.refund_count += 1
+    return taken
+```
+
+`credits.py` 상단에 `import logging`, `logger = logging.getLogger(__name__)`,
+그리고 `from app.models import Challenge, CreditLedger, DailyRecord, User` 를 맞춘다.
+
+- [ ] **Step 5: 웹훅에 환불 분기 추가**
+
+`server/app/routers/webhooks.py` — 멱등 검사 직후, 상품 조회 앞에 넣는다:
+
+```python
+    if event.get("type") in REFUND_EVENT_TYPES:
+        return _handle_refund(db, event)
+```
+
+그리고 모듈에 추가한다:
+
+```python
+def _handle_refund(db: Session, event: dict) -> dict[str, bool]:
+    """환불은 곧 참가 취소다. 챌린지를 닫고 그 챌린지가 준 크레딧을 회수한다."""
+    txn = str(event.get("transaction_id"))
+    purchase = (db.query(Purchase)
+                  .filter_by(transaction_id=txn)
+                  .order_by(Purchase.created_at.desc()).first())
+    if purchase is None or purchase.challenge_id is None:
+        # 모르는 거래다. 재시도해도 달라지지 않으므로 200 으로 닫는다.
+        logger.error("환불 대상을 찾지 못함 transaction_id=%s", txn)
+        return {"started": False}
+
+    challenge = db.get(Challenge, purchase.challenge_id)
+    if challenge is None or challenge.status == "refunded":
+        return {"started": False}          # 재전송. 두 번 회수하지 않는다
+
+    user = db.get(User, purchase.user_id)
+    claw_back(db, user, challenge)
+    db.commit()
+    return {"started": False}
+```
+
+구매 처리부에서 `Purchase(...)` 생성 시 `transaction_id=str(event.get("transaction_id"))`
+를 두 곳 모두에 추가한다.
+
+- [ ] **Step 6: 테스트 통과 확인**
+
+Run: `cd server && .venv/bin/python -m pytest tests/test_refunds.py -v`
+Expected: PASS (7 passed)
+
+- [ ] **Step 7: 전체 통과 확인**
+
+Run: `cd server && .venv/bin/python -m pytest -q`
+Expected: 164 passed
+
+- [ ] **Step 8: 커밋**
+
+```bash
+git add server/app server/alembic server/tests/test_refunds.py
+git commit -m "feat(server): 환불 처리 — 챌린지 취소와 크레딧 회수"
+```

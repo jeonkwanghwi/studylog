@@ -66,7 +66,7 @@
 
 **포함** — 소셜 로그인 / 목표 시간 설정 / 그룹 생성·초대코드 참여 / 시작·종료 샷 촬영 및 AI 판정 /
 이의제기 재판정 / 세션 합산 / 04:00 정산 / streak / 그룹 피드(사진 공개) /
-**IAP 챌린지 참가·일일 크레딧 페이백·크레딧으로 재참가·크레딧 streak 복구** / 푸시 알림 5종
+**IAP 챌린지 참가·일일 크레딧 페이백·크레딧으로 재참가·크레딧 streak 복구·환불 시 회수** / 푸시 알림 5종
 
 **제외** — 그룹 투표, 랭킹(순위표), 친구 인증 알림, pHash·EXIF 기반 자동 차단,
 deferred deep link, 웹, 다국어·다중 타임존
@@ -157,7 +157,7 @@ deferred deep link, 웹, 다국어·다중 타임존
 | 컬럼 | 비고 |
 |---|---|
 | `id`, `user_id` | |
-| `product_id` | `challenge_<7\|14\|30>d_<1\|2\|3>k` (9종) |
+| `product_id` | `challenge_<7\|14\|30>d_<1\|2\|3>k` (상한 필터 후 7종) |
 | `entry_amount` | 낸 참가비 (원) |
 | `daily_payback` | 하루 달성 시 적립액 (원) |
 | `completion_bonus` | 전일 달성 시 추가 적립액. **크레딧 참가면 0** |
@@ -278,8 +278,14 @@ streak_count = (전날 daily_record.streak_snapshot) + 1     # 전날 레코드�
 | `challenge_14d_2k` | 14일 | ₩2,000 | ₩28,000 | ₩1,400 |
 | `challenge_14d_3k` | 14일 | ₩3,000 | ₩42,000 | ₩2,100 |
 | `challenge_30d_1k` | 30일 | ₩1,000 | ₩30,000 | ₩3,000 |
-| `challenge_30d_2k` | 30일 | ₩2,000 | ₩60,000 | ₩6,000 |
-| `challenge_30d_3k` | 30일 | ₩3,000 | ₩90,000 | ₩9,000 |
+| ~~`challenge_30d_2k`~~ | 30일 | ₩2,000 | ~~₩60,000~~ | — |
+| ~~`challenge_30d_3k`~~ | 30일 | ₩3,000 | ~~₩90,000~~ | — |
+
+> **실제 출시 상품은 7종이다.** 참가비 ₩50,000을 넘는 두 조합은
+> `settings.max_entry_amount` 필터에 걸려 `CHALLENGE_PRODUCTS`에 생성되지 않는다.
+> 상한이 막으려는 것은 첫 주에 실패한 유저가 "9만원 날렸다"고 느끼는 상황이다 —
+> 그건 동기부여가 아니라 환불 요구와 1점 리뷰다. 스토어에 등록할 상품 목록의
+> 정본은 `app/domain.py`의 `CHALLENGE_PRODUCTS`이며 위 표가 아니다.
 
 **완주 보너스는 기간에 비례한 비율이다 — 7일 0% / 14일 5% / 30일 10%.** 배팅액이
 변수가 된 이상 정액 보너스는 성립하지 않는다. 7일은 완주가 쉬워 보너스 없이도 팔리고,
@@ -480,6 +486,60 @@ AI 판정은 매출과 무관하게 **유저 수에 정비례하는 순수 원�
 | 배치 | **서버 cron** 04:00 KST. 서버리스가 아니므로 EventBridge는 불필요 |
 | 시크릿 | `.env` (퍼미션 600). 서버 하나에 시크릿 5개라 Secrets Manager는 비용과 코드만 는다 |
 | 앱 | Expo (RN) — `expo-camera`, `expo-notifications`, RevenueCat SDK |
+
+---
+
+## 9.1 앱 (Expo) 설계
+
+서버 스펙은 제품 규칙을 정했지 화면을 정하지 않았다. 앱 고유의 결정은 아래와 같다.
+
+### 화면 (12개)
+
+| 화면 | 소비하는 API |
+|---|---|
+| 로그인 | `POST /auth/social` |
+| 목표 설정 (온보딩) | `PATCH /users/me/goal` |
+| **홈** | `GET /users/me`, `GET /sessions/current`, `GET /challenges/current` |
+| 촬영 (모달) | `POST /sessions/start`, `POST /sessions/{id}/end` |
+| 판정 결과 (모달) | — (업로드 응답을 그대로 표시) |
+| 이의제기 (모달) | `POST /photos/{id}/appeal` |
+| 챌린지 선택 | `GET /challenges/products`, `POST /challenges`, RevenueCat SDK |
+| 피드 | `GET /groups`, `GET /groups/{id}/feed` |
+| 그룹 (목록·생성·참여) | `GET/POST /groups`, `POST /groups/join` |
+| 기록 | `GET /records/me` |
+| 복구 (모달) | `POST /records/{id}/restore` |
+| 설정 | `PATCH /users/me/goal`, `PUT /users/me/push-token` |
+
+탭은 **홈 · 피드 · 기록 · 설정** 넷. 촬영·이의제기·복구는 모달로 띄운다.
+
+### 앱이 절대 하지 말아야 할 것
+
+1. **시간을 스스로 세지 않는다.** 경과 시간은 서버가 준 `started_at`과 기기 현재
+   시각의 차이로 *표시만* 한다. 앱이 죽어도 `GET /sessions/current`로 복원되며,
+   기기 시계를 바꿔도 정산에는 아무 영향이 없다 — 서버만이 시간의 근거다.
+2. **판정 결과를 스스로 만들지 않는다.** `result` 필드를 그대로 보여준다.
+3. **가격표를 하드코딩하지 않는다.** `GET /challenges/products`가 그 유저에게
+   허용된 상품만 준다(첫 챌린지 상한이 유저마다 다르다). 하드코딩하면 상한이 무의미해진다.
+4. **결제를 자체 처리하지 않는다.** RevenueCat SDK가 IAP를 띄우고, 크레딧 지급은
+   서버가 웹훅으로만 한다. 앱이 "샀다"고 서버에 알리는 경로는 존재하지 않는다.
+
+### 종료 샷 업로드 실패가 가장 위험하다
+
+시작 샷 업로드가 실패하면 아무 일도 안 일어난 것이라 안전하다. 그러나 **종료 샷이
+실패했는데 유저가 "끝냈다"고 믿으면 세션이 통째로 날아간다**(4시간 뒤 0분 회수).
+
+그래서 종료 화면은 성공을 확인하기 전까지 절대 닫히지 않는다. 실패 시 재시도
+버튼과 함께 남은 시간을 보여주고, 앱을 다시 열면 `GET /sessions/current`가
+열린 세션을 되살려 같은 화면으로 돌아온다.
+
+### 스택
+
+Expo SDK (managed) / TypeScript / Expo Router (파일 기반 라우팅) /
+TanStack Query (서버 상태) / expo-camera / expo-secure-store (토큰) /
+expo-notifications / react-native-purchases (RevenueCat)
+
+전역 상태 관리자는 두지 않는다. 이 앱의 상태는 사실상 전부 서버 상태이고,
+TanStack Query의 캐시가 그 역할을 한다.
 
 ---
 
