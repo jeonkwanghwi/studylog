@@ -3954,6 +3954,44 @@ def test_days_outside_the_challenge_window_pay_nothing(db, user):
     assert db.query(CreditLedger).filter_by(reason="payback").count() == 0
 
 
+def test_a_restored_day_does_not_count_as_completion(db, user):
+    """복구는 연속 기록을 사는 상품이고 보너스는 완주에 대한 보상이다.
+    되산 날을 완주로 쳐주면, 챌린지가 닫히기 전에 복구했는지 뒤에 했는지에 따라
+    결과가 갈린다."""
+    from app.credits import start_challenge
+    from app.models import CreditLedger
+
+    start = study_day(now_utc()) - timedelta(days=7)
+    challenge = start_challenge(db, user, "challenge_7d_1k", "iap", start)
+    challenge.completion_bonus = 500
+    db.commit()
+
+    # 3일차를 실패하고, 챌린지가 닫히기 **전에** 복구해 둔다.
+    # 복구를 마감 뒤에 하면 옛 로직("failed 없음")도 보너스를 막으므로
+    # 두 로직이 구분되지 않는다. 마감 전에 복구해야 진짜 검증이 된다.
+    for offset in range(4):
+        day = start + timedelta(days=offset)
+        add_session(db, user, day, 10 if offset == 3 else 70)
+        settle_day(db, day)
+
+    missed = db.query(DailyRecord).filter_by(date=start + timedelta(days=3)).one()
+    missed.result = "passed"
+    db.commit()
+
+    for offset in range(4, 7):
+        day = start + timedelta(days=offset)
+        add_session(db, user, day, 70)
+        settle_day(db, day)
+
+    db.refresh(challenge)
+    assert challenge.status == "completed"
+    # 마감 시점의 결과는 [success x6, passed] — failed 는 없지만 완주도 아니다
+    results = {r.result for r in db.query(DailyRecord)
+                                   .filter_by(challenge_id=challenge.id)}
+    assert results == {"success", "passed"}
+    assert db.query(CreditLedger).filter_by(reason="bonus").count() == 0
+
+
 def test_bonus_requires_every_day_of_the_run_to_be_settled(db, user):
     """실패한 날이 없다는 것만으로는 완주가 아니다. 정산이 누락된 날은
     실패로도 잡히지 않으므로, 구멍 난 런에 보너스가 나가면 안 된다."""
@@ -4149,12 +4187,15 @@ def _close_challenge(db: Session, user: User, challenge) -> None:
     if not challenge.completion_bonus:
         return
 
-    # 실패한 날이 없는 것만으로는 부족하다. 정산이 누락된 날이 있으면
-    # 그날은 실패로도 잡히지 않아서, 빈 구멍이 있는 런에 보너스가 나간다.
+    # 완주 보너스는 실제로 해낸 것에 준다. 크레딧으로 되산 날(passed)은 완주가
+    # 아니다 — 복구는 연속 기록을 사는 상품이고 보너스는 완주에 대한 보상이라,
+    # 둘을 섞으면 챌린지가 닫히기 전에 복구했는지 뒤에 했는지에 따라 결과가 갈린다.
+    # 모든 날이 success 여야 한다는 규칙은 복구 시점과 무관하게 같은 답을 준다.
+    # (레코드 수를 함께 세는 이유: 정산이 누락된 날은 failed 로도 안 잡힌다.)
     results = [r.result for r in db.query(DailyRecord)
                                   .filter(DailyRecord.challenge_id == challenge.id)]
     perfect = (len(results) == challenge.total_days
-               and "failed" not in results)
+               and all(r == "success" for r in results))
     if perfect:
         move(db, user, challenge.completion_bonus, "bonus", challenge.id)
 ```
@@ -4164,7 +4205,7 @@ def _close_challenge(db: Session, user: User, challenge) -> None:
 - [ ] **Step 7: 테스트 통과 확인**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_settlement_rules.py tests/test_settlement.py -v`
-Expected: PASS (18 passed)
+Expected: PASS (19 passed)
 
 - [ ] **Step 8: 커밋**
 
@@ -4978,7 +5019,7 @@ def notify_rejection(user: User, reason: str) -> None:
 
 - [ ] **Step 5: 테스트 통과 확인**
 
-Run: `cd server && python -m pytest tests/test_reminders.py tests/test_session_start.py tests/test_session_end.py -v`
+Run: `cd server && .venv/bin/python -m pytest tests/test_reminders.py tests/test_session_start.py tests/test_session_end.py -v`
 Expected: PASS (18 passed)
 
 - [ ] **Step 6: 커밋**
@@ -5144,10 +5185,40 @@ WantedBy=multi-user.target
 2. **RDS** `db.t4g.micro`, gp3 20GB, 자동 백업 7일, 퍼블릭 액세스 끔, 보안그룹은 Lightsail만 허용
 3. **S3** 버킷 `studylog-photos`. 퍼블릭 액세스 전면 차단 — 사진은 presigned URL로만 나간다. 인스턴스 역할에 `s3:PutObject`, `s3:GetObject`만 부여
 4. **시크릿** `/srv/studylog/server/.env`, 소유자 `studylog`, 퍼미션 `600`. 채울 키: `DATABASE_URL`, `JWT_SECRET`, `ANTHROPIC_API_KEY`, `REVENUECAT_WEBHOOK_SECRET`, `APPLE_BUNDLE_ID`, `GOOGLE_CLIENT_ID`, `S3_BUCKET`
-5. **배포** `git pull` → `pip install -e .` → `alembic upgrade head` → `systemctl restart studylog`
+5. **배포** `git pull` → `pip install -e .` → **`alembic check`** → `alembic upgrade head` → `systemctl restart studylog`
+
+   > `alembic check`를 건너뛰지 말 것. `0001_initial.py`는 손으로 작성됐고 실제
+   > Postgres 상대로 한 번도 돌아본 적이 없다(개발 환경에 DB가 없어 `--sql` 렌더링으로만
+   > 검증했다). 첫 배포가 이 마이그레이션의 첫 실전이므로, 모델과 어긋난 곳이 있으면
+   > 여기서 잡아야 한다.
 6. **cron 등록** `crontab -u studylog server/deploy/crontab`
-7. **RevenueCat** 대시보드에서 웹훅 URL을 `https://<도메인>/webhooks/revenuecat`으로, Authorization 헤더를 `Bearer <REVENUECAT_WEBHOOK_SECRET>`로 설정. 상품 ID는 `pass_3`, `pass_10`
-8. **점검** 배포 후 `curl https://<도메인>/health`가 `{"status":"ok"}`를 주는지, `python -m app.cli sweep`이 에러 없이 끝나는지 확인
+7. **RevenueCat** 대시보드에서 웹훅 URL을 `https://<도메인>/webhooks/revenuecat`으로,
+   Authorization 헤더를 `Bearer <REVENUECAT_WEBHOOK_SECRET>`로 설정한다.
+
+   상품 ID는 **앱스토어·구글플레이·RevenueCat 세 곳 모두에서 아래와 정확히 같아야 한다.**
+   하나라도 다르면 결제는 정상으로 끝나는데 웹훅이 상품을 못 찾아 챌린지가 시작되지
+   않는다 — 돈은 걷히고 유저는 아무것도 못 받는다. `app/domain.py`의
+   `CHALLENGE_PRODUCTS` 키가 유일한 정본이며, 배포 전에 대조할 것:
+
+   | 상품 ID | 기간 | 하루 배팅 | 가격 |
+   |---|---|---|---|
+   | `challenge_7d_1k` | 7일 | ₩1,000 | ₩7,000 |
+   | `challenge_7d_2k` | 7일 | ₩2,000 | ₩14,000 |
+   | `challenge_7d_3k` | 7일 | ₩3,000 | ₩21,000 |
+   | `challenge_14d_1k` | 14일 | ₩1,000 | ₩14,000 |
+   | `challenge_14d_2k` | 14일 | ₩2,000 | ₩28,000 |
+   | `challenge_14d_3k` | 14일 | ₩3,000 | ₩42,000 |
+   | `challenge_30d_1k` | 30일 | ₩1,000 | ₩30,000 |
+
+   대조 명령: `python -c "from app.domain import CHALLENGE_PRODUCTS as P;
+   [print(k, v.price) for k,v in sorted(P.items())]"`
+
+   가격이 스토어 티어에 없으면 **가격을 억지로 맞추지 말고** 하루 배팅액을 조정해서
+   참가비가 티어에 떨어지게 한 뒤, `CHALLENGE_PRODUCTS`를 먼저 고치고 배포한다.
+8. **점검** 배포 후 `curl https://<도메인>/health`가 `{"status":"ok"}`를 주는지,
+   `python -m app.cli sweep`이 에러 없이 끝나는지 확인
+9. **첫 정산 전 확인** 서비스 시작 후 첫 04:00이 오기 전에 `python -m app.cli settle`을
+   스테이징에서 한 번 돌려본다. 정산은 크레딧을 실제로 지급하므로 되돌리기가 번거롭다
 
 - [ ] **Step 6: 전체 테스트 실행**
 
