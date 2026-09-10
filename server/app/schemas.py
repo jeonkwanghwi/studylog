@@ -68,3 +68,19 @@ class GroupOut(BaseModel):
     invite_code: str
 
     model_config = {"from_attributes": True}
+
+
+class FeedPhotoOut(BaseModel):
+    kind: str
+    url: str
+    received_at: datetime
+
+
+class FeedItemOut(BaseModel):
+    user_id: str
+    nickname: str
+    streak_count: int
+    total_minutes: int
+    goal_minutes: int
+    result: str | None
+    photos: list[FeedPhotoOut]

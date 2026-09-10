@@ -72,6 +72,8 @@ class PhotoStorage(Protocol):
 
     def get(self, key: str) -> bytes: ...
 
+    def url(self, key: str) -> str: ...
+
 
 class S3Storage:
     def __init__(self, bucket: str, region: str) -> None:
@@ -86,6 +88,13 @@ class S3Storage:
     def get(self, key: str) -> bytes:
         return self._client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
 
+    def url(self, key: str) -> str:
+        return self._client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": key},
+            ExpiresIn=settings.photo_url_expire_seconds,
+        )
+
 
 @dataclass
 class MemoryStorage:
@@ -97,6 +106,9 @@ class MemoryStorage:
 
     def get(self, key: str) -> bytes:
         return self.items[key]
+
+    def url(self, key: str) -> str:
+        return f"memory://{key}"
 
 
 def get_storage() -> PhotoStorage:

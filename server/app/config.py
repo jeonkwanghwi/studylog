@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     aws_region: str = "ap-northeast-2"
     image_max_edge: int = 1280
     image_jpeg_quality: int = 80
+    photo_url_expire_seconds: int = 3600
 
     # 판정
     judge_provider: str = "claude"
