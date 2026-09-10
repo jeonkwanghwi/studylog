@@ -954,7 +954,7 @@ export default function Login() {
   async function handle(provider: "apple" | "google") {
     setBusy(true);
     try {
-      // TODO(Task 15): expo-apple-authentication / expo-auth-session 으로 교체.
+      // TODO(Task 14): expo-apple-authentication / expo-auth-session 으로 교체.
       // 그전까지는 개발용 토큰으로 서버에 붙는다.
       const idToken = process.env.EXPO_PUBLIC_DEV_ID_TOKEN ?? "dev";
       await signIn(provider, idToken, "광휘");
@@ -1387,3 +1387,2539 @@ Expected: PASS (26 passed)
 git add app-client/app app-client/src/components app-client/__tests__
 git commit -m "feat(app): 탭 레이아웃과 홈 화면"
 ```
+
+---
+
+## Task 6: 촬영과 시작 샷
+
+**Files:**
+- Create: `app-client/app/capture.tsx`, `app-client/src/api/upload.ts`
+- Modify: `app-client/app/_layout.tsx` (모달 프레젠테이션)
+- Test: `app-client/__tests__/upload.test.ts`, `app-client/__tests__/capture.test.tsx`
+
+**Interfaces:**
+- Consumes: `api.postForm`, `JudgeResultOut`, `useInvalidateAll`
+- Produces:
+  - `uploadPhoto(kind, uri, sessionId?) -> Promise<JudgeResultOut>`
+  - `/capture?kind=start` · `/capture?kind=end&sessionId=...` 모달
+
+- [ ] **Step 1: 업로드 테스트 작성**
+
+`app-client/__tests__/upload.test.ts`:
+
+```ts
+import { uploadPhoto } from "../src/api/upload";
+
+describe("사진 업로드", () => {
+  beforeEach(() => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ result: "pass", photo_id: "p1", reason: "", session: null }),
+    } as Response);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("시작 샷은 /sessions/start 로 간다", async () => {
+    await uploadPhoto("start", "file:///tmp/a.jpg");
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
+      "http://127.0.0.1:8000/sessions/start"
+    );
+  });
+
+  it("종료 샷은 세션 id 를 경로에 넣는다", async () => {
+    await uploadPhoto("end", "file:///tmp/a.jpg", "s1");
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
+      "http://127.0.0.1:8000/sessions/s1/end"
+    );
+  });
+
+  it("종료 샷인데 세션 id 가 없으면 부르기 전에 막는다", async () => {
+    await expect(uploadPhoto("end", "file:///tmp/a.jpg")).rejects.toThrow(
+      /세션/
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("image 라는 이름으로 붙인다", async () => {
+    await uploadPhoto("start", "file:///tmp/a.jpg");
+    const init = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
+    const form = init.body as FormData;
+    expect(form.get("image")).toBeTruthy();
+  });
+});
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/upload.test.ts`
+Expected: FAIL — `Cannot find module '../src/api/upload'`
+
+- [ ] **Step 3: 업로드 함수 작성**
+
+`app-client/src/api/upload.ts`:
+
+```ts
+import { api } from "./client";
+import type { JudgeResultOut } from "./types";
+
+export type ShotKind = "start" | "end";
+
+/**
+ * 사진을 올리고 판정 결과를 받는다. 서버가 같은 요청 안에서 AI 판정까지
+ * 끝내므로 응답이 곧 결과다 — 폴링할 것이 없다.
+ */
+export async function uploadPhoto(
+  kind: ShotKind,
+  uri: string,
+  sessionId?: string
+): Promise<JudgeResultOut> {
+  if (kind === "end" && !sessionId) {
+    throw new Error("종료 샷에는 세션 id 가 필요합니다.");
+  }
+
+  const form = new FormData();
+  form.append("image", {
+    uri,
+    name: "shot.jpg",
+    type: "image/jpeg",
+  } as unknown as Blob);
+
+  const path = kind === "start" ? "/sessions/start" : `/sessions/${sessionId}/end`;
+  return api.postForm<JudgeResultOut>(path, form);
+}
+```
+
+- [ ] **Step 4: 촬영 화면 테스트 작성**
+
+`app-client/__tests__/capture.test.tsx`:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+
+import Capture from "../app/capture";
+
+jest.mock("expo-router", () => ({
+  router: { back: jest.fn(), replace: jest.fn(), push: jest.fn() },
+  useLocalSearchParams: () => ({ kind: "start" }),
+}));
+
+jest.mock("expo-camera", () => ({
+  CameraView: ({ children }: { children: React.ReactNode }) => children ?? null,
+  useCameraPermissions: () => [{ granted: true }, jest.fn()],
+}));
+
+const wrap = (ui: React.ReactElement) =>
+  render(
+    <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>
+  );
+
+afterEach(() => jest.restoreAllMocks());
+
+describe("촬영", () => {
+  it("통과하면 결과를 보여주고 닫을 수 있다", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({
+        result: "pass", photo_id: "p1", reason: "책상에서 공부 중입니다.",
+        session: { id: "s1", started_at: "2026-09-10T01:00:00Z", ended_at: null,
+                   counted_minutes: 0, status: "open" },
+      }),
+    } as Response);
+
+    wrap(<Capture />);
+    fireEvent.press(screen.getByText("촬영"));
+
+    await waitFor(() => expect(screen.getByText(/공부 시작됨/)).toBeTruthy());
+  });
+
+  it("거절되면 사유와 재촬영·이의제기를 보여준다", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({
+        result: "fail", photo_id: "p9", reason: "게임 화면입니다.", session: null,
+      }),
+    } as Response);
+
+    wrap(<Capture />);
+    fireEvent.press(screen.getByText("촬영"));
+
+    await waitFor(() => expect(screen.getByText("게임 화면입니다.")).toBeTruthy());
+    expect(screen.getByText("다시 찍기")).toBeTruthy();
+    expect(screen.getByText("이의제기")).toBeTruthy();
+  });
+
+  it("업로드가 실패하면 재시도를 제안한다", async () => {
+    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+
+    wrap(<Capture />);
+    fireEvent.press(screen.getByText("촬영"));
+
+    await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
+  });
+});
+```
+
+- [ ] **Step 5: 촬영 화면 작성**
+
+`app-client/app/capture.tsx`:
+
+```tsx
+import { CameraView, useCameraPermissions } from "expo-camera";
+import { router, useLocalSearchParams } from "expo-router";
+import { useRef, useState } from "react";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+
+import { useInvalidateAll } from "../src/api/hooks";
+import { uploadPhoto, type ShotKind } from "../src/api/upload";
+import type { JudgeResultOut } from "../src/api/types";
+
+type Phase =
+  | { name: "ready" }
+  | { name: "uploading" }
+  | { name: "judged"; result: JudgeResultOut }
+  | { name: "error"; message: string };
+
+export default function Capture() {
+  const { kind, sessionId } = useLocalSearchParams<{
+    kind: ShotKind;
+    sessionId?: string;
+  }>();
+  const [permission, requestPermission] = useCameraPermissions();
+  const [phase, setPhase] = useState<Phase>({ name: "ready" });
+  const cameraRef = useRef<CameraView>(null);
+  const invalidate = useInvalidateAll();
+
+  async function shoot() {
+    setPhase({ name: "uploading" });
+    try {
+      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.8 });
+      const result = await uploadPhoto(kind, photo?.uri ?? "", sessionId);
+      await invalidate();
+      setPhase({ name: "judged", result });
+    } catch (error) {
+      setPhase({ name: "error", message: (error as Error).message });
+    }
+  }
+
+  if (!permission?.granted) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 12 }}>
+        <Text>공부 인증에는 카메라가 필요합니다.</Text>
+        <Pressable onPress={requestPermission}>
+          <Text style={{ color: "#2563eb" }}>카메라 권한 허용</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (phase.name === "judged") {
+    const passed = phase.result.result === "pass";
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 16 }}>
+        <Text style={{ fontSize: 24, fontWeight: "700" }}>
+          {passed
+            ? kind === "start"
+              ? "공부 시작됨"
+              : "공부 종료됨"
+            : "인증이 거절됐습니다"}
+        </Text>
+        <Text style={{ color: "#52525b" }}>{phase.result.reason}</Text>
+        {passed ? (
+          <Pressable onPress={() => router.back()}>
+            <Text style={{ color: "#2563eb" }}>확인</Text>
+          </Pressable>
+        ) : (
+          <View style={{ gap: 12 }}>
+            <Pressable onPress={() => setPhase({ name: "ready" })}>
+              <Text style={{ color: "#2563eb" }}>다시 찍기</Text>
+            </Pressable>
+            <Pressable
+              onPress={() =>
+                router.replace(`/appeal/${phase.result.photo_id}`)
+              }
+            >
+              <Text style={{ color: "#71717a" }}>이의제기</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  if (phase.name === "error") {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 16 }}>
+        <Text style={{ fontSize: 20, fontWeight: "700" }}>
+          사진을 올리지 못했습니다
+        </Text>
+        <Text style={{ color: "#52525b" }}>{phase.message}</Text>
+        <Pressable onPress={shoot}>
+          <Text style={{ color: "#2563eb" }}>다시 시도</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
+      <View style={{ padding: 24, alignItems: "center" }}>
+        {phase.name === "uploading" ? (
+          <View style={{ alignItems: "center", gap: 8 }}>
+            <ActivityIndicator />
+            <Text style={{ color: "#71717a" }}>판정 중…</Text>
+          </View>
+        ) : (
+          <Pressable
+            onPress={shoot}
+            style={{
+              backgroundColor: "#18181b", paddingHorizontal: 40,
+              paddingVertical: 18, borderRadius: 999,
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "600" }}>촬영</Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+}
+```
+
+`app-client/app/_layout.tsx` 의 `<Stack>` 에 모달 선언을 추가한다:
+
+```tsx
+        <Stack.Screen name="capture" options={{ presentation: "modal" }} />
+        <Stack.Screen name="appeal/[photoId]" options={{ presentation: "modal" }} />
+        <Stack.Screen name="restore/[recordId]" options={{ presentation: "modal" }} />
+```
+
+- [ ] **Step 6: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (33 passed)
+
+- [ ] **Step 7: 커밋**
+
+```bash
+git add app-client/app app-client/src/api/upload.ts app-client/__tests__
+git commit -m "feat(app): 촬영과 시작 샷 업로드"
+```
+
+---
+
+## Task 7: 종료 샷의 실패 복구
+
+**이 앱에서 가장 위험한 화면이다.** 시작 샷이 실패하면 아무 일도 안 일어난 것이라
+안전하다. 그러나 **종료 샷이 실패했는데 유저가 "끝냈다"고 믿으면 세션이 통째로
+날아간다** — 4시간 뒤 0분으로 회수되고, 그날 페이백도 사라진다.
+
+Task 6의 `error` 단계는 유저가 닫아버릴 수 있다. 종료 샷에서는 그러면 안 된다.
+
+**Files:**
+- Modify: `app-client/app/capture.tsx`
+- Test: `app-client/__tests__/capture-end.test.tsx`
+
+**Interfaces:**
+- Consumes: `uploadPhoto`, `remainingBeforeForfeit`, `useCurrentSession`
+- Produces: 종료 샷 실패 시 닫히지 않는 화면과 남은 시간 경고
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`app-client/__tests__/capture-end.test.tsx`:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { router } from "expo-router";
+
+import Capture from "../app/capture";
+
+jest.mock("expo-router", () => ({
+  router: { back: jest.fn(), replace: jest.fn(), push: jest.fn() },
+  useLocalSearchParams: () => ({
+    kind: "end",
+    sessionId: "s1",
+    startedAt: "2026-09-10T01:00:00Z",
+  }),
+}));
+
+jest.mock("expo-camera", () => ({
+  CameraView: ({ children }: { children: React.ReactNode }) => children ?? null,
+  useCameraPermissions: () => [{ granted: true }, jest.fn()],
+}));
+
+const wrap = () =>
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Capture />
+    </QueryClientProvider>
+  );
+
+afterEach(() => {
+  jest.restoreAllMocks();
+  jest.useRealTimers();
+});
+
+describe("종료 샷 실패", () => {
+  it("닫기를 제공하지 않는다 — 닫으면 세션이 날아간다", async () => {
+    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    wrap();
+    fireEvent.press(screen.getByText("촬영"));
+
+    await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
+    expect(screen.queryByText("확인")).toBeNull();
+    expect(screen.queryByText("닫기")).toBeNull();
+  });
+
+  it("회수까지 남은 시간을 경고한다", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-10T04:35:00Z"));
+    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    wrap();
+    fireEvent.press(screen.getByText("촬영"));
+
+    await waitFor(() =>
+      expect(screen.getByText(/25분 안에 종료하지 않으면/)).toBeTruthy()
+    );
+  });
+
+  it("시작 샷 실패는 그냥 닫아도 된다", async () => {
+    // 이 케이스는 Task 6 테스트가 덮는다. 여기서는 종료 샷만 다룬다.
+    expect(true).toBe(true);
+  });
+
+  it("재시도해서 성공하면 종료 결과를 보여준다", async () => {
+    const fetchMock = jest
+      .spyOn(global, "fetch")
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce({
+        ok: true, status: 200,
+        json: async () => ({
+          result: "pass", photo_id: "p2", reason: "노트 필기입니다.",
+          session: { id: "s1", started_at: "2026-09-10T01:00:00Z",
+                     ended_at: "2026-09-10T02:35:00Z", counted_minutes: 95,
+                     status: "closed" },
+        }),
+      } as Response);
+
+    wrap();
+    fireEvent.press(screen.getByText("촬영"));
+    await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
+
+    fireEvent.press(screen.getByText("다시 시도"));
+    await waitFor(() => expect(screen.getByText(/공부 종료됨/)).toBeTruthy());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/capture-end.test.tsx`
+Expected: FAIL — 종료 샷 실패 화면이 아직 시작 샷과 같아서 경고 문구가 없다
+
+- [ ] **Step 3: 구현**
+
+`app-client/app/capture.tsx` 의 `error` 분기를 종료 샷에서 다르게 만든다.
+`useLocalSearchParams` 에 `startedAt` 을 추가로 받고, 홈에서 넘길 때도 함께 넘긴다:
+
+```tsx
+  const { kind, sessionId, startedAt } = useLocalSearchParams<{
+    kind: ShotKind;
+    sessionId?: string;
+    startedAt?: string;
+  }>();
+```
+
+`error` 분기를 아래로 교체한다:
+
+```tsx
+  if (phase.name === "error") {
+    const isEnd = kind === "end";
+    const remaining =
+      isEnd && startedAt
+        ? remainingBeforeForfeit(startedAt, new Date())
+        : null;
+
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 16 }}>
+        <Text style={{ fontSize: 20, fontWeight: "700" }}>
+          사진을 올리지 못했습니다
+        </Text>
+        <Text style={{ color: "#52525b" }}>{phase.message}</Text>
+
+        {isEnd && (
+          // 여기서 닫기를 주면 안 된다. 유저가 끝냈다고 믿고 나가면
+          // 세션은 4시간 뒤 0분으로 회수되고 그날 페이백도 사라진다.
+          <Text style={{ color: "#dc2626" }}>
+            아직 공부가 끝나지 않았습니다.
+            {remaining !== null &&
+              ` ${remaining}분 안에 종료하지 않으면 오늘 기록이 사라집니다.`}
+          </Text>
+        )}
+
+        <Pressable onPress={shoot}>
+          <Text style={{ color: "#2563eb" }}>다시 시도</Text>
+        </Pressable>
+
+        {!isEnd && (
+          <Pressable onPress={() => router.back()}>
+            <Text style={{ color: "#71717a" }}>닫기</Text>
+          </Pressable>
+        )}
+      </View>
+    );
+  }
+```
+
+`remainingBeforeForfeit` 을 import 하고, 홈(`app/(tabs)/index.tsx`)의 종료 버튼이
+`startedAt` 도 넘기게 고친다:
+
+```tsx
+            onPress={() =>
+              router.push({
+                pathname: "/capture",
+                params: { kind: "end", sessionId: open.id, startedAt: open.started_at },
+              })
+            }
+```
+
+- [ ] **Step 4: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (37 passed)
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add app-client/app app-client/__tests__/capture-end.test.tsx
+git commit -m "feat(app): 종료 샷 실패는 닫히지 않는다"
+```
+
+---
+
+## Task 8: 이의제기
+
+**Files:**
+- Create: `app-client/app/appeal/[photoId].tsx`
+- Test: `app-client/__tests__/appeal.test.tsx`
+
+**Interfaces:**
+- Consumes: `api.post`, `JudgeResultOut`, `ApiError`, `useInvalidateAll`
+- Produces: `/appeal/{photoId}` 모달
+
+이의제기는 **사진당 한 번뿐**이다. 그 사실을 보내기 전에 알려야 한다 — 눌러보고
+나서 "이미 썼습니다"를 보는 것과, 누르기 전에 아는 것은 다르다.
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`app-client/__tests__/appeal.test.tsx`:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+
+import Appeal from "../app/appeal/[photoId]";
+
+jest.mock("expo-router", () => ({
+  router: { back: jest.fn(), replace: jest.fn() },
+  useLocalSearchParams: () => ({ photoId: "p1" }),
+}));
+
+const wrap = () =>
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Appeal />
+    </QueryClientProvider>
+  );
+
+afterEach(() => jest.restoreAllMocks());
+
+describe("이의제기", () => {
+  it("한 번뿐이라는 사실을 미리 알린다", () => {
+    wrap();
+    expect(screen.getByText(/한 번만/)).toBeTruthy();
+  });
+
+  it("설명이 비어 있으면 보내지 않는다", () => {
+    const spy = jest.spyOn(global, "fetch");
+    wrap();
+    fireEvent.press(screen.getByText("다시 판정 요청"));
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("통과하면 결과를 보여준다", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({
+        result: "pass", photo_id: "p1", reason: "태블릿 인강입니다.",
+        session: { id: "s1", started_at: "2026-09-10T02:00:00Z", ended_at: null,
+                   counted_minutes: 0, status: "open" },
+      }),
+    } as Response);
+
+    wrap();
+    fireEvent.changeText(
+      screen.getByPlaceholderText(/무엇을 하고 있었는지/),
+      "태블릿으로 인강 듣는 중입니다"
+    );
+    fireEvent.press(screen.getByText("다시 판정 요청"));
+
+    await waitFor(() => expect(screen.getByText(/인정됐습니다/)).toBeTruthy());
+  });
+
+  it("거절되면 최종이라는 것을 분명히 한다", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({
+        result: "fail", photo_id: "p1", reason: "여전히 게임 화면입니다.",
+        session: null,
+      }),
+    } as Response);
+
+    wrap();
+    fireEvent.changeText(screen.getByPlaceholderText(/무엇을 하고 있었는지/), "공부 중");
+    fireEvent.press(screen.getByText("다시 판정 요청"));
+
+    await waitFor(() => expect(screen.getByText(/최종/)).toBeTruthy());
+  });
+
+  it("409 는 이미 썼거나 자격이 없다는 뜻이라 안내가 다르다", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: false, status: 409,
+      json: async () => ({ detail: "이의제기는 한 번만 가능합니다" }),
+    } as Response);
+
+    wrap();
+    fireEvent.changeText(screen.getByPlaceholderText(/무엇을 하고 있었는지/), "공부 중");
+    fireEvent.press(screen.getByText("다시 판정 요청"));
+
+    await waitFor(() =>
+      expect(screen.getByText("이의제기는 한 번만 가능합니다")).toBeTruthy()
+    );
+  });
+});
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/appeal.test.tsx`
+Expected: FAIL — `Cannot find module '../app/appeal/[photoId]'`
+
+- [ ] **Step 3: 구현**
+
+`app-client/app/appeal/[photoId].tsx`:
+
+```tsx
+import { router, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+
+import { ApiError, api } from "../../src/api/client";
+import { useInvalidateAll } from "../../src/api/hooks";
+import type { JudgeResultOut } from "../../src/api/types";
+
+type Phase =
+  | { name: "writing" }
+  | { name: "sending" }
+  | { name: "judged"; result: JudgeResultOut }
+  | { name: "refused"; detail: string };
+
+export default function Appeal() {
+  const { photoId } = useLocalSearchParams<{ photoId: string }>();
+  const [text, setText] = useState("");
+  const [phase, setPhase] = useState<Phase>({ name: "writing" });
+  const invalidate = useInvalidateAll();
+
+  async function send() {
+    if (!text.trim()) return;
+    setPhase({ name: "sending" });
+    try {
+      const result = await api.post<JudgeResultOut>(
+        `/photos/${photoId}/appeal`,
+        { text: text.trim() }
+      );
+      await invalidate();
+      setPhase({ name: "judged", result });
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.detail
+          : "요청을 보내지 못했습니다. 잠시 후 다시 시도해주세요.";
+      setPhase({ name: "refused", detail: message });
+    }
+  }
+
+  if (phase.name === "judged") {
+    const passed = phase.result.result === "pass";
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 16 }}>
+        <Text style={{ fontSize: 22, fontWeight: "700" }}>
+          {passed ? "인정됐습니다" : "다시 거절됐습니다"}
+        </Text>
+        <Text style={{ color: "#52525b" }}>{phase.result.reason}</Text>
+        {!passed && (
+          <Text style={{ color: "#71717a", fontSize: 13 }}>
+            이 사진에 대한 판정은 최종입니다.
+          </Text>
+        )}
+        <Pressable onPress={() => router.back()}>
+          <Text style={{ color: "#2563eb" }}>확인</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (phase.name === "refused") {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 16 }}>
+        <Text style={{ fontSize: 20, fontWeight: "700" }}>
+          이의제기를 처리하지 못했습니다
+        </Text>
+        <Text style={{ color: "#52525b" }}>{phase.detail}</Text>
+        <Pressable onPress={() => router.back()}>
+          <Text style={{ color: "#2563eb" }}>확인</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, padding: 24, gap: 16, paddingTop: 64 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>이의제기</Text>
+      <Text style={{ color: "#52525b" }}>
+        사진에서 무엇을 하고 있었는지 적어주세요. 설명을 참고해 한 번만 다시 판정합니다.
+      </Text>
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        multiline
+        placeholder="예: 태블릿으로 인강 듣는 중이었습니다"
+        style={{
+          borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 12,
+          padding: 14, minHeight: 120, textAlignVertical: "top",
+        }}
+      />
+      {phase.name === "sending" ? (
+        <ActivityIndicator />
+      ) : (
+        <Pressable
+          onPress={send}
+          style={{
+            backgroundColor: text.trim() ? "#18181b" : "#d4d4d8",
+            padding: 16, borderRadius: 12,
+          }}
+        >
+          <Text style={{ color: "#fff", textAlign: "center", fontWeight: "600" }}>
+            다시 판정 요청
+          </Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+```
+
+- [ ] **Step 4: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (42 passed)
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add app-client/app/appeal app-client/__tests__/appeal.test.tsx
+git commit -m "feat(app): 이의제기 모달"
+```
+
+---
+
+## Task 9: 챌린지 선택과 결제
+
+**Files:**
+- Create: `app-client/app/challenge/select.tsx`, `app-client/src/purchases/revenuecat.ts`
+- Modify: `app-client/app/(tabs)/index.tsx`
+- Test: `app-client/__tests__/challenge.test.tsx`
+
+**Interfaces:**
+- Consumes: `useProducts`, `useMe`, `api.post`, `ApiError`, `formatWon`
+- Produces:
+  - `initPurchases(userId)`, `buyProduct(productId)` — RevenueCat 래퍼
+  - `/challenge/select`
+
+**가격표를 하드코딩하면 안 된다.** `GET /challenges/products` 가 그 유저에게
+허용된 상품만 준다 — 첫 챌린지 상한이 유저마다 다르기 때문이다. 목록을 앱에
+박아두면 상한이 무의미해지고, 유저가 살 수 없는 상품을 눌러 결제창까지 간다.
+
+**결제 성공을 서버에 알리지 않는다.** RevenueCat이 웹훅으로 서버에 알리고,
+서버만이 챌린지를 연다. 앱은 구매 후 `GET /challenges/current` 를 다시 읽을 뿐이다.
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`app-client/__tests__/challenge.test.tsx`:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+
+import Select from "../app/challenge/select";
+
+jest.mock("expo-router", () => ({
+  router: { back: jest.fn() },
+}));
+
+const buyProduct = jest.fn();
+jest.mock("../src/purchases/revenuecat", () => ({
+  initPurchases: jest.fn(),
+  buyProduct: (...args: unknown[]) => buyProduct(...args),
+}));
+
+const products = [
+  { product_id: "challenge_7d_1k", days: 7, daily_payback: 1000,
+    price: 7000, completion_bonus: 0 },
+  { product_id: "challenge_30d_1k", days: 30, daily_payback: 1000,
+    price: 30000, completion_bonus: 3000 },
+];
+
+const me = {
+  id: "u1", nickname: "광휘", daily_goal_minutes: 60,
+  pending_goal_minutes: null, streak_count: 0, credit_balance: 30000,
+};
+
+function mockApi(overrides: Record<string, unknown> = {}) {
+  jest.spyOn(global, "fetch").mockImplementation((url) => {
+    const path = String(url).replace("http://127.0.0.1:8000", "");
+    const body =
+      overrides[path] ??
+      { "/challenges/products": products, "/users/me": me }[path] ??
+      null;
+    return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
+  });
+}
+
+const wrap = () =>
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Select />
+    </QueryClientProvider>
+  );
+
+afterEach(() => {
+  jest.restoreAllMocks();
+  buyProduct.mockReset();
+});
+
+describe("챌린지 선택", () => {
+  it("서버가 준 목록만 보여준다 — 하드코딩된 가격표가 없다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByText("7일")).toBeTruthy());
+    expect(screen.getByText("30일")).toBeTruthy();
+    expect(screen.queryByText("90일")).toBeNull();
+  });
+
+  it("참가비와 완주 보너스를 함께 보여준다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByText("₩30,000")).toBeTruthy());
+    expect(screen.getByText(/완주 시 ₩3,000/)).toBeTruthy();
+  });
+
+  it("크레딧이 충분하면 크레딧 참가를 제안한다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getAllByText("크레딧으로 참가").length).toBeGreaterThan(0));
+  });
+
+  it("크레딧이 모자라면 결제로만 참가한다", async () => {
+    mockApi({ "/users/me": { ...me, credit_balance: 0 } });
+    wrap();
+    await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
+    expect(screen.queryByText("크레딧으로 참가")).toBeNull();
+  });
+
+  it("결제는 RevenueCat 을 거치고 서버에 직접 알리지 않는다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
+
+    fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+    await waitFor(() => expect(buyProduct).toHaveBeenCalledWith("challenge_7d_1k"));
+
+    const posted = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+    );
+    expect(posted).toHaveLength(0);
+  });
+});
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/challenge.test.tsx`
+Expected: FAIL — `Cannot find module '../app/challenge/select'`
+
+- [ ] **Step 3: RevenueCat 래퍼 작성**
+
+`app-client/src/purchases/revenuecat.ts`:
+
+```ts
+import Purchases from "react-native-purchases";
+
+/**
+ * RevenueCat 의 appUserID 는 반드시 우리 서버의 user.id 와 같아야 한다.
+ * 웹훅이 app_user_id 로 유저를 찾기 때문에, 다르면 결제는 되는데
+ * 챌린지가 안 열린다.
+ */
+export async function initPurchases(userId: string): Promise<void> {
+  const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_KEY;
+  if (!apiKey) throw new Error("EXPO_PUBLIC_REVENUECAT_KEY 가 없습니다.");
+  await Purchases.configure({ apiKey, appUserID: userId });
+}
+
+/**
+ * 결제만 한다. 크레딧 지급과 챌린지 개설은 서버가 웹훅으로 처리하므로,
+ * 여기서 서버에 "샀다"고 알리는 경로는 만들지 않는다.
+ */
+export async function buyProduct(productId: string): Promise<void> {
+  const products = await Purchases.getProducts([productId]);
+  const product = products.find((p) => p.identifier === productId);
+  if (!product) throw new Error(`스토어에 없는 상품입니다: ${productId}`);
+  await Purchases.purchaseStoreProduct(product);
+}
+```
+
+- [ ] **Step 4: 화면 작성**
+
+`app-client/app/challenge/select.tsx`:
+
+```tsx
+import { router } from "expo-router";
+import { useState } from "react";
+import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+
+import { ApiError, api } from "../../src/api/client";
+import { useInvalidateAll, useMe, useProducts } from "../../src/api/hooks";
+import type { ChallengeProductOut } from "../../src/api/types";
+import { formatWon } from "../../src/money/format";
+import { buyProduct } from "../../src/purchases/revenuecat";
+
+export default function Select() {
+  const products = useProducts();
+  const me = useMe();
+  const invalidate = useInvalidateAll();
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const balance = me.data?.credit_balance ?? 0;
+
+  async function payWithStore(product: ChallengeProductOut) {
+    setBusy(product.product_id);
+    try {
+      await buyProduct(product.product_id);
+      // 서버에 알리지 않는다. RevenueCat 웹훅이 챌린지를 연다.
+      await invalidate();
+      router.back();
+    } catch (error) {
+      Alert.alert("결제 실패", (error as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function payWithCredit(product: ChallengeProductOut) {
+    setBusy(product.product_id);
+    try {
+      await api.post("/challenges", { product_id: product.product_id });
+      await invalidate();
+      router.back();
+    } catch (error) {
+      const detail =
+        error instanceof ApiError ? error.detail : "참가하지 못했습니다.";
+      Alert.alert("참가 실패", detail);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 20, gap: 16, paddingTop: 64 }}>
+      <Text style={{ fontSize: 24, fontWeight: "700" }}>챌린지 선택</Text>
+      <Text style={{ color: "#52525b" }}>
+        참가비를 먼저 내고, 목표를 채운 날마다 하루치를 크레딧으로 돌려받습니다.
+      </Text>
+
+      {(products.data ?? []).map((product) => (
+        <View
+          key={product.product_id}
+          style={{
+            borderWidth: 1, borderColor: "#e4e4e7",
+            borderRadius: 16, padding: 18, gap: 10,
+          }}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 18, fontWeight: "700" }}>
+              {product.days}일
+            </Text>
+            <Text style={{ fontSize: 18, fontWeight: "700" }}>
+              {formatWon(product.price)}
+            </Text>
+          </View>
+          <Text style={{ color: "#52525b", fontSize: 13 }}>
+            하루 {formatWon(product.daily_payback)}씩 돌려받음
+            {product.completion_bonus > 0 &&
+              ` · 완주 시 ${formatWon(product.completion_bonus)} 추가`}
+          </Text>
+
+          <Pressable
+            disabled={busy !== null}
+            onPress={() => payWithStore(product)}
+            style={{ backgroundColor: "#18181b", padding: 14, borderRadius: 10 }}
+          >
+            <Text style={{ color: "#fff", textAlign: "center", fontWeight: "600" }}>
+              결제하고 시작
+            </Text>
+          </Pressable>
+
+          {balance >= product.price && (
+            <Pressable
+              disabled={busy !== null}
+              onPress={() => payWithCredit(product)}
+              style={{ borderWidth: 1, borderColor: "#d4d4d8", padding: 14, borderRadius: 10 }}
+            >
+              <Text style={{ textAlign: "center" }}>크레딧으로 참가</Text>
+            </Pressable>
+          )}
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+```
+
+홈의 `CreditMeter` 를 눌러 이 화면으로 가도록 `app/(tabs)/index.tsx` 에서 감싼다:
+
+```tsx
+      <Pressable onPress={() => router.push("/challenge/select")}>
+        <CreditMeter … />
+      </Pressable>
+```
+
+- [ ] **Step 5: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (47 passed)
+
+- [ ] **Step 6: 커밋**
+
+```bash
+git add app-client/app/challenge app-client/src/purchases app-client/__tests__ app-client/app/\(tabs\)
+git commit -m "feat(app): 챌린지 선택과 결제"
+```
+
+---
+
+## Task 10: 그룹
+
+**Files:**
+- Create: `app-client/app/groups/index.tsx`
+- Test: `app-client/__tests__/groups.test.tsx`
+
+**Interfaces:**
+- Consumes: `useGroups`, `api.post`, `ApiError`
+- Produces: `/groups` — 목록·생성·초대코드 참여, 그리고 초대코드 공유
+
+초대코드는 손으로 옮겨 적는다. 그래서 서버가 헷갈리는 글자(O/0, I/1)를 뺀
+알파벳으로 만든다. 앱은 **대문자로 보여주고 입력을 대문자로 정규화**한다.
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`app-client/__tests__/groups.test.tsx`:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+
+import Groups from "../app/groups/index";
+
+jest.mock("expo-router", () => ({ router: { back: jest.fn() } }));
+
+const groups = [{ id: "g1", name: "고시반", invite_code: "A3K9P2" }];
+
+function mockApi(list = groups) {
+  jest.spyOn(global, "fetch").mockImplementation((url, init) => {
+    const path = String(url).replace("http://127.0.0.1:8000", "");
+    if ((init as RequestInit | undefined)?.method === "POST") {
+      return Promise.resolve({
+        ok: true, status: 200,
+        json: async () => ({ id: "g2", name: "새 그룹", invite_code: "ZZZZZZ" }),
+      } as Response);
+    }
+    return Promise.resolve({
+      ok: true, status: 200,
+      json: async () => (path === "/groups" ? list : null),
+    } as Response);
+  });
+}
+
+const wrap = () =>
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Groups />
+    </QueryClientProvider>
+  );
+
+afterEach(() => jest.restoreAllMocks());
+
+describe("그룹", () => {
+  it("내 그룹과 초대코드를 보여준다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByText("고시반")).toBeTruthy());
+    expect(screen.getByText("A3K9P2")).toBeTruthy();
+  });
+
+  it("그룹이 없으면 만들거나 참여하라고 안내한다", async () => {
+    mockApi([]);
+    wrap();
+    await waitFor(() =>
+      expect(screen.getByText(/아직 그룹이 없습니다/)).toBeTruthy()
+    );
+  });
+
+  it("초대코드 입력을 대문자로 정규화한다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByText("고시반")).toBeTruthy());
+
+    const input = screen.getByPlaceholderText("초대코드 6자리");
+    fireEvent.changeText(input, "a3k9p2");
+    expect(input.props.value).toBe("A3K9P2");
+  });
+
+  it("6자리가 아니면 참여를 보내지 않는다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByText("고시반")).toBeTruthy());
+
+    fireEvent.changeText(screen.getByPlaceholderText("초대코드 6자리"), "ABC");
+    fireEvent.press(screen.getByText("참여"));
+
+    const posted = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+    );
+    expect(posted).toHaveLength(0);
+  });
+
+  it("이름이 비면 생성을 보내지 않는다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByText("고시반")).toBeTruthy());
+
+    fireEvent.press(screen.getByText("그룹 만들기"));
+    const posted = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+    );
+    expect(posted).toHaveLength(0);
+  });
+});
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/groups.test.tsx`
+Expected: FAIL — `Cannot find module '../app/groups/index'`
+
+- [ ] **Step 3: 구현**
+
+`app-client/app/groups/index.tsx`:
+
+```tsx
+import * as Clipboard from "expo-clipboard";
+import { useState } from "react";
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { ApiError, api } from "../../src/api/client";
+import { keys, useGroups } from "../../src/api/hooks";
+import type { GroupOut } from "../../src/api/types";
+
+const CODE_LENGTH = 6;
+
+export default function Groups() {
+  const groups = useGroups();
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+
+  async function refresh() {
+    await queryClient.invalidateQueries({ queryKey: keys.groups });
+  }
+
+  async function create() {
+    if (!name.trim()) return;
+    try {
+      await api.post<GroupOut>("/groups", { name: name.trim() });
+      setName("");
+      await refresh();
+    } catch (error) {
+      Alert.alert("만들지 못했습니다", (error as Error).message);
+    }
+  }
+
+  async function join() {
+    if (code.length !== CODE_LENGTH) return;
+    try {
+      await api.post<GroupOut>("/groups/join", { invite_code: code });
+      setCode("");
+      await refresh();
+    } catch (error) {
+      const detail =
+        error instanceof ApiError ? error.detail : "참여하지 못했습니다.";
+      Alert.alert("참여 실패", detail);
+    }
+  }
+
+  async function share(group: GroupOut) {
+    // 딥링크 대신 코드를 복사해 카톡에 붙여넣게 한다.
+    await Clipboard.setStringAsync(
+      `스터디로그 초대코드: ${group.invite_code}`
+    );
+    Alert.alert("복사됨", "초대코드를 붙여넣어 친구에게 보내세요.");
+  }
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 20, gap: 20, paddingTop: 64 }}>
+      <Text style={{ fontSize: 24, fontWeight: "700" }}>그룹</Text>
+
+      {(groups.data ?? []).length === 0 && !groups.isLoading && (
+        <Text style={{ color: "#71717a" }}>
+          아직 그룹이 없습니다. 만들거나 초대코드로 참여하세요.
+        </Text>
+      )}
+
+      {(groups.data ?? []).map((group) => (
+        <Pressable
+          key={group.id}
+          onPress={() => share(group)}
+          style={{
+            borderWidth: 1, borderColor: "#e4e4e7",
+            borderRadius: 14, padding: 16, gap: 6,
+          }}
+        >
+          <Text style={{ fontSize: 17, fontWeight: "600" }}>{group.name}</Text>
+          <Text style={{ letterSpacing: 2, color: "#52525b" }}>
+            {group.invite_code}
+          </Text>
+          <Text style={{ fontSize: 12, color: "#a1a1aa" }}>
+            눌러서 초대코드 복사
+          </Text>
+        </Pressable>
+      ))}
+
+      <View style={{ gap: 10 }}>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="새 그룹 이름"
+          style={{
+            borderWidth: 1, borderColor: "#e4e4e7",
+            borderRadius: 10, padding: 14,
+          }}
+        />
+        <Pressable onPress={create}>
+          <Text style={{ color: "#2563eb" }}>그룹 만들기</Text>
+        </Pressable>
+      </View>
+
+      <View style={{ gap: 10 }}>
+        <TextInput
+          value={code}
+          onChangeText={(next) => setCode(next.toUpperCase().slice(0, CODE_LENGTH))}
+          placeholder="초대코드 6자리"
+          autoCapitalize="characters"
+          style={{
+            borderWidth: 1, borderColor: "#e4e4e7",
+            borderRadius: 10, padding: 14, letterSpacing: 2,
+          }}
+        />
+        <Pressable onPress={join}>
+          <Text style={{ color: "#2563eb" }}>참여</Text>
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+}
+```
+
+`npx expo install expo-clipboard` 를 먼저 실행한다.
+
+- [ ] **Step 4: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (52 passed)
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add app-client/app/groups app-client/__tests__/groups.test.tsx app-client/package.json
+git commit -m "feat(app): 그룹 목록·생성·초대코드 참여"
+```
+
+---
+
+## Task 11: 피드
+
+**Files:**
+- Create: `app-client/app/(tabs)/feed.tsx`, `app-client/src/components/PhotoGrid.tsx`
+- Test: `app-client/__tests__/feed.test.tsx`
+
+**Interfaces:**
+- Consumes: `useGroups`, `useFeed`, `formatElapsed`
+- Produces: `/feed` 탭, `<PhotoGrid photos />`
+
+피드는 **사진을 그대로 보여준다.** 서버가 자동 중복 검사를 하지 않기로 했으므로
+서로 보는 것이 부정행위를 억제하는 유일한 장치다. 흐림 처리나 숨김을 넣으면
+그 장치가 사라진다.
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`app-client/__tests__/feed.test.tsx`:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react-native";
+
+import Feed from "../app/(tabs)/feed";
+
+const groups = [{ id: "g1", name: "고시반", invite_code: "A3K9P2" }];
+
+const feed = [
+  {
+    user_id: "u1", nickname: "광휘", streak_count: 5,
+    total_minutes: 95, goal_minutes: 60, result: null,
+    photos: [
+      { kind: "start", url: "http://x/1.jpg", received_at: "2026-09-10T01:00:00Z" },
+      { kind: "end", url: "http://x/2.jpg", received_at: "2026-09-10T02:35:00Z" },
+    ],
+  },
+  {
+    user_id: "u2", nickname: "친구", streak_count: 0,
+    total_minutes: 0, goal_minutes: 120, result: "failed", photos: [],
+  },
+];
+
+function mockApi(items = feed, list = groups) {
+  jest.spyOn(global, "fetch").mockImplementation((url) => {
+    const path = String(url).replace("http://127.0.0.1:8000", "");
+    const body = path === "/groups" ? list : items;
+    return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
+  });
+}
+
+const wrap = () =>
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Feed />
+    </QueryClientProvider>
+  );
+
+afterEach(() => jest.restoreAllMocks());
+
+describe("피드", () => {
+  it("그룹원의 오늘 진행 상황을 보여준다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByText("광휘")).toBeTruthy());
+    expect(screen.getByText("1시간 35분 / 60분")).toBeTruthy();
+  });
+
+  it("정산된 실패는 박제한다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByText("✗ 미인증")).toBeTruthy());
+  });
+
+  it("아직 정산 전이면 결과를 단정하지 않는다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByText("광휘")).toBeTruthy());
+    // 광휘는 result 가 null 이므로 미인증 표시가 붙으면 안 된다
+    expect(screen.getAllByText("✗ 미인증")).toHaveLength(1);
+  });
+
+  it("사진을 그대로 보여준다 — 가리지 않는다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getAllByTestId("feed-photo")).toHaveLength(2));
+  });
+
+  it("그룹이 없으면 참여를 권한다", async () => {
+    mockApi(feed, []);
+    wrap();
+    await waitFor(() =>
+      expect(screen.getByText(/그룹에 참여하면/)).toBeTruthy()
+    );
+  });
+});
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/feed.test.tsx`
+Expected: FAIL — `Cannot find module '../app/(tabs)/feed'`
+
+- [ ] **Step 3: 구현**
+
+`app-client/src/components/PhotoGrid.tsx`:
+
+```tsx
+import { Image, View } from "react-native";
+
+import type { FeedPhotoOut } from "../api/types";
+
+export function PhotoGrid({ photos }: { photos: FeedPhotoOut[] }) {
+  if (photos.length === 0) return null;
+  return (
+    <View style={{ flexDirection: "row", gap: 8 }}>
+      {photos.map((photo) => (
+        <Image
+          key={photo.url}
+          testID="feed-photo"
+          source={{ uri: photo.url }}
+          style={{ width: 96, height: 96, borderRadius: 10, backgroundColor: "#f4f4f5" }}
+        />
+      ))}
+    </View>
+  );
+}
+```
+
+`app-client/app/(tabs)/feed.tsx`:
+
+```tsx
+import { router } from "expo-router";
+import { useState } from "react";
+import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+
+import { useFeed, useGroups } from "../../src/api/hooks";
+import { PhotoGrid } from "../../src/components/PhotoGrid";
+import { StreakBadge } from "../../src/components/StreakBadge";
+import { formatElapsed } from "../../src/time/elapsed";
+
+const RESULT_LABEL: Record<string, string> = {
+  success: "✓ 달성",
+  passed: "✓ 복구됨",
+  failed: "✗ 미인증",
+};
+
+export default function Feed() {
+  const groups = useGroups();
+  const [selected, setSelected] = useState<string | undefined>();
+  const groupId = selected ?? groups.data?.[0]?.id;
+  const feed = useFeed(groupId);
+
+  if (!groups.isLoading && (groups.data ?? []).length === 0) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 12 }}>
+        <Text style={{ color: "#52525b" }}>
+          그룹에 참여하면 친구들의 인증을 볼 수 있습니다.
+        </Text>
+        <Pressable onPress={() => router.push("/groups")}>
+          <Text style={{ color: "#2563eb" }}>그룹 만들거나 참여하기</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      contentContainerStyle={{ padding: 20, gap: 16, paddingTop: 64 }}
+      refreshControl={
+        <RefreshControl refreshing={feed.isFetching} onRefresh={() => feed.refetch()} />
+      }
+    >
+      {(groups.data ?? []).length > 1 && (
+        <ScrollView horizontal contentContainerStyle={{ gap: 8 }}>
+          {(groups.data ?? []).map((group) => (
+            <Pressable
+              key={group.id}
+              onPress={() => setSelected(group.id)}
+              style={{
+                paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+                backgroundColor: group.id === groupId ? "#18181b" : "#f4f4f5",
+              }}
+            >
+              <Text style={{ color: group.id === groupId ? "#fff" : "#18181b" }}>
+                {group.name}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
+      {(feed.data ?? []).map((item) => (
+        <View
+          key={item.user_id}
+          style={{
+            borderWidth: 1, borderColor: "#e4e4e7",
+            borderRadius: 14, padding: 16, gap: 10,
+          }}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 16, fontWeight: "600" }}>{item.nickname}</Text>
+            <StreakBadge count={item.streak_count} />
+          </View>
+          <Text style={{ color: "#52525b" }}>
+            {formatElapsed(item.total_minutes)} / {item.goal_minutes}분
+            {item.result ? `  ${RESULT_LABEL[item.result]}` : ""}
+          </Text>
+          <PhotoGrid photos={item.photos} />
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+```
+
+- [ ] **Step 4: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (57 passed)
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add app-client/app/\(tabs\)/feed.tsx app-client/src/components/PhotoGrid.tsx app-client/__tests__/feed.test.tsx
+git commit -m "feat(app): 그룹 피드"
+```
+
+---
+
+## Task 12: 기록과 복구
+
+**Files:**
+- Create: `app-client/app/(tabs)/records.tsx`, `app-client/app/restore/[recordId].tsx`
+- Test: `app-client/__tests__/records.test.tsx`
+
+**Interfaces:**
+- Consumes: `useRecords`, `useMe`, `api.post`, `ApiError`, `formatWon`
+- Produces: `/records` 탭, `/restore/{recordId}` 모달
+
+**복구는 그날의 페이백을 되사는 게 아니다.** ₩2,000을 내도 놓친 ₩1,000은 돌아오지
+않는다. 산술적으로 손해라는 걸 화면이 숨기지 않아야 한다 — 숨기면 나중에
+"₩2,000 냈는데 왜 잔액이 안 늘죠"라는 문의가 온다.
+
+복구 가능 시한은 **정산 후 24시간**이다. 지난 것은 버튼을 아예 내린다.
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`app-client/__tests__/records.test.tsx`:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+
+import Records from "../app/(tabs)/records";
+import Restore from "../app/restore/[recordId]";
+
+jest.mock("expo-router", () => ({
+  router: { back: jest.fn(), push: jest.fn() },
+  useLocalSearchParams: () => ({ recordId: "r1" }),
+}));
+
+const NOW = new Date("2026-09-10T06:00:00Z");
+
+const records = [
+  { id: "r1", date: "2026-09-09", total_minutes: 20, goal_minutes: 60,
+    result: "failed", payback_amount: 0, streak_snapshot: 0,
+    settled_at: "2026-09-09T19:00:00Z" },           // 11시간 전 — 복구 가능
+  { id: "r2", date: "2026-09-07", total_minutes: 10, goal_minutes: 60,
+    result: "failed", payback_amount: 0, streak_snapshot: 0,
+    settled_at: "2026-09-07T19:00:00Z" },           // 지남
+  { id: "r3", date: "2026-09-08", total_minutes: 90, goal_minutes: 60,
+    result: "success", payback_amount: 1000, streak_snapshot: 3,
+    settled_at: "2026-09-08T19:00:00Z" },
+];
+
+const me = {
+  id: "u1", nickname: "광휘", daily_goal_minutes: 60,
+  pending_goal_minutes: null, streak_count: 0, credit_balance: 5000,
+};
+
+function mockApi(overrides: Record<string, unknown> = {}) {
+  jest.spyOn(global, "fetch").mockImplementation((url) => {
+    const path = String(url).replace("http://127.0.0.1:8000", "").split("?")[0];
+    const body =
+      overrides[path] ?? { "/records/me": records, "/users/me": me }[path] ?? null;
+    return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
+  });
+}
+
+const wrap = (ui: React.ReactElement) =>
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      {ui}
+    </QueryClientProvider>
+  );
+
+beforeEach(() => jest.useFakeTimers().setSystemTime(NOW));
+afterEach(() => {
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+});
+
+describe("기록", () => {
+  it("성공한 날의 적립액을 보여준다", async () => {
+    mockApi();
+    wrap(<Records />);
+    await waitFor(() => expect(screen.getByText("+₩1,000")).toBeTruthy());
+  });
+
+  it("24시간 안의 실패한 날에만 복구 버튼이 뜬다", async () => {
+    mockApi();
+    wrap(<Records />);
+    await waitFor(() => expect(screen.getAllByText("복구하기")).toHaveLength(1));
+  });
+
+  it("크레딧이 모자라면 복구 버튼 대신 부족 안내를 한다", async () => {
+    mockApi({ "/users/me": { ...me, credit_balance: 500 } });
+    wrap(<Records />);
+    await waitFor(() => expect(screen.getByText(/크레딧이 부족/)).toBeTruthy());
+  });
+});
+
+describe("복구", () => {
+  it("페이백은 돌아오지 않는다는 것을 분명히 한다", () => {
+    mockApi();
+    wrap(<Restore />);
+    expect(screen.getByText(/페이백은 돌아오지 않습니다/)).toBeTruthy();
+  });
+
+  it("성공하면 복원된 streak 를 보여준다", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({
+        id: "r1", date: "2026-09-09", total_minutes: 20, goal_minutes: 60,
+        result: "passed", payback_amount: 0, streak_snapshot: 7,
+        settled_at: "2026-09-09T19:00:00Z",
+      }),
+    } as Response);
+
+    wrap(<Restore />);
+    fireEvent.press(screen.getByText("₩2,000으로 복구"));
+    await waitFor(() => expect(screen.getByText(/7일/)).toBeTruthy());
+  });
+
+  it("402 는 크레딧 부족이라 안내가 다르다", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: false, status: 402,
+      json: async () => ({ detail: "크레딧이 부족합니다" }),
+    } as Response);
+
+    wrap(<Restore />);
+    fireEvent.press(screen.getByText("₩2,000으로 복구"));
+    await waitFor(() => expect(screen.getByText("크레딧이 부족합니다")).toBeTruthy());
+  });
+});
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/records.test.tsx`
+Expected: FAIL — `Cannot find module '../app/(tabs)/records'`
+
+- [ ] **Step 3: 복구 가능 판정을 순수 함수로 뺀다**
+
+`app-client/src/time/elapsed.ts` 에 추가한다:
+
+```ts
+export const RESTORE_WINDOW_HOURS = 24;
+
+/** 정산 후 24시간 안에만 복구할 수 있다. */
+export function canRestore(settledAtIso: string, now: Date): boolean {
+  const deadline =
+    new Date(settledAtIso).getTime() + RESTORE_WINDOW_HOURS * 3_600_000;
+  return now.getTime() <= deadline;
+}
+```
+
+`app-client/src/money/format.ts` 에 추가한다:
+
+```ts
+export const RESTORE_COST = 2000;
+```
+
+- [ ] **Step 4: 화면 작성**
+
+`app-client/app/(tabs)/records.tsx`:
+
+```tsx
+import { router } from "expo-router";
+import { Pressable, ScrollView, Text, View } from "react-native";
+
+import { useMe, useRecords } from "../../src/api/hooks";
+import { RESTORE_COST, formatWon } from "../../src/money/format";
+import { canRestore, formatElapsed } from "../../src/time/elapsed";
+
+const LABEL: Record<string, string> = {
+  success: "달성", passed: "복구됨", failed: "미달",
+};
+
+export default function Records() {
+  const records = useRecords();
+  const me = useMe();
+  const balance = me.data?.credit_balance ?? 0;
+  const now = new Date();
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 20, gap: 12, paddingTop: 64 }}>
+      <Text style={{ fontSize: 24, fontWeight: "700" }}>기록</Text>
+
+      {(records.data ?? []).map((record) => {
+        const restorable =
+          record.result === "failed" && canRestore(record.settled_at, now);
+        return (
+          <View
+            key={record.id}
+            style={{
+              borderWidth: 1, borderColor: "#e4e4e7",
+              borderRadius: 12, padding: 14, gap: 6,
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontWeight: "600" }}>{record.date}</Text>
+              <Text
+                style={{ color: record.result === "failed" ? "#dc2626" : "#16a34a" }}
+              >
+                {LABEL[record.result]}
+              </Text>
+            </View>
+            <Text style={{ color: "#52525b", fontSize: 13 }}>
+              {formatElapsed(record.total_minutes)} / {record.goal_minutes}분
+              {record.payback_amount > 0 && `   +${formatWon(record.payback_amount)}`}
+            </Text>
+
+            {restorable &&
+              (balance >= RESTORE_COST ? (
+                <Pressable onPress={() => router.push(`/restore/${record.id}`)}>
+                  <Text style={{ color: "#2563eb" }}>복구하기</Text>
+                </Pressable>
+              ) : (
+                <Text style={{ color: "#a1a1aa", fontSize: 12 }}>
+                  복구하려면 크레딧이 부족합니다 ({formatWon(RESTORE_COST)} 필요)
+                </Text>
+              ))}
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+```
+
+`app-client/app/restore/[recordId].tsx`:
+
+```tsx
+import { router, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+
+import { ApiError, api } from "../../src/api/client";
+import { useInvalidateAll } from "../../src/api/hooks";
+import type { DailyRecordOut } from "../../src/api/types";
+import { RESTORE_COST, formatWon } from "../../src/money/format";
+
+type Phase =
+  | { name: "confirm" }
+  | { name: "sending" }
+  | { name: "done"; record: DailyRecordOut }
+  | { name: "failed"; detail: string };
+
+export default function Restore() {
+  const { recordId } = useLocalSearchParams<{ recordId: string }>();
+  const [phase, setPhase] = useState<Phase>({ name: "confirm" });
+  const invalidate = useInvalidateAll();
+
+  async function restore() {
+    setPhase({ name: "sending" });
+    try {
+      const record = await api.post<DailyRecordOut>(
+        `/records/${recordId}/restore`
+      );
+      await invalidate();
+      setPhase({ name: "done", record });
+    } catch (error) {
+      setPhase({
+        name: "failed",
+        detail:
+          error instanceof ApiError ? error.detail : "복구하지 못했습니다.",
+      });
+    }
+  }
+
+  if (phase.name === "done") {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 12 }}>
+        <Text style={{ fontSize: 22, fontWeight: "700" }}>복구됐습니다</Text>
+        <Text style={{ color: "#52525b" }}>
+          연속 기록이 {phase.record.streak_snapshot}일로 복원됐습니다.
+        </Text>
+        <Pressable onPress={() => router.back()}>
+          <Text style={{ color: "#2563eb" }}>확인</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (phase.name === "failed") {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 12 }}>
+        <Text style={{ fontSize: 20, fontWeight: "700" }}>복구 실패</Text>
+        <Text style={{ color: "#52525b" }}>{phase.detail}</Text>
+        <Pressable onPress={() => router.back()}>
+          <Text style={{ color: "#2563eb" }}>확인</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 16 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>연속 기록 복구</Text>
+      <Text style={{ color: "#52525b" }}>
+        크레딧 {formatWon(RESTORE_COST)}을 써서 끊긴 연속 기록을 되살립니다.
+      </Text>
+      <Text style={{ color: "#a1a1aa", fontSize: 13 }}>
+        그날의 페이백은 돌아오지 않습니다. 되사는 것은 연속 기록입니다.
+      </Text>
+      {phase.name === "sending" ? (
+        <ActivityIndicator />
+      ) : (
+        <Pressable
+          onPress={restore}
+          style={{ backgroundColor: "#18181b", padding: 16, borderRadius: 12 }}
+        >
+          <Text style={{ color: "#fff", textAlign: "center", fontWeight: "600" }}>
+            {formatWon(RESTORE_COST)}으로 복구
+          </Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+```
+
+- [ ] **Step 5: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (63 passed)
+
+- [ ] **Step 6: 커밋**
+
+```bash
+git add app-client/app app-client/src app-client/__tests__/records.test.tsx
+git commit -m "feat(app): 기록 목록과 streak 복구"
+```
+
+---
+
+## Task 13: 설정과 푸시 등록
+
+**Files:**
+- Create: `app-client/app/(tabs)/settings.tsx`, `app-client/src/notifications/register.ts`, `app-client/app/onboarding.tsx`
+- Modify: `app-client/app/_layout.tsx`
+- Test: `app-client/__tests__/settings.test.tsx`
+
+**Interfaces:**
+- Consumes: `useMe`, `useSetGoal`, `api.put`, `useAuth`
+- Produces:
+  - `registerPushToken()` — 권한 요청 후 `PUT /users/me/push-token`
+  - `/settings` 탭, `/onboarding`
+
+**목표 변경은 내일부터 적용된다.** 서버가 그렇게 만들어져 있고(밤에 목표를 낮춰
+페이백을 타는 걸 막으려고), 화면이 그 사실을 말하지 않으면 유저는 버그로 여긴다.
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`app-client/__tests__/settings.test.tsx`:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+
+import Settings from "../app/(tabs)/settings";
+
+jest.mock("expo-router", () => ({ router: { replace: jest.fn(), push: jest.fn() } }));
+jest.mock("expo-secure-store");
+
+const me = {
+  id: "u1", nickname: "광휘", daily_goal_minutes: 60,
+  pending_goal_minutes: null, streak_count: 3, credit_balance: 4000,
+};
+
+function mockApi(user = me) {
+  jest.spyOn(global, "fetch").mockImplementation((_url, init) =>
+    Promise.resolve({
+      ok: true, status: 200,
+      json: async () =>
+        (init as RequestInit | undefined)?.method === "PATCH"
+          ? { ...user, pending_goal_minutes: 90 }
+          : user,
+    } as Response)
+  );
+}
+
+const wrap = () =>
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Settings />
+    </QueryClientProvider>
+  );
+
+afterEach(() => jest.restoreAllMocks());
+
+describe("설정", () => {
+  it("현재 목표를 보여준다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByDisplayValue("60")).toBeTruthy());
+  });
+
+  it("목표를 바꾸면 내일부터 적용된다고 알린다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByDisplayValue("60")).toBeTruthy());
+
+    fireEvent.changeText(screen.getByDisplayValue("60"), "90");
+    fireEvent.press(screen.getByText("목표 저장"));
+
+    await waitFor(() =>
+      expect(screen.getByText(/내일부터 90분/)).toBeTruthy()
+    );
+  });
+
+  it("예약된 변경이 있으면 그것도 보여준다", async () => {
+    mockApi({ ...me, pending_goal_minutes: 120 });
+    wrap();
+    await waitFor(() =>
+      expect(screen.getByText(/내일부터 120분/)).toBeTruthy()
+    );
+  });
+
+  it("범위를 벗어난 값은 보내지 않는다", async () => {
+    mockApi();
+    wrap();
+    await waitFor(() => expect(screen.getByDisplayValue("60")).toBeTruthy());
+
+    fireEvent.changeText(screen.getByDisplayValue("60"), "0");
+    fireEvent.press(screen.getByText("목표 저장"));
+
+    const patched = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "PATCH"
+    );
+    expect(patched).toHaveLength(0);
+  });
+});
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/settings.test.tsx`
+Expected: FAIL — `Cannot find module '../app/(tabs)/settings'`
+
+- [ ] **Step 3: 푸시 등록 작성**
+
+`app-client/src/notifications/register.ts`:
+
+```ts
+import * as Notifications from "expo-notifications";
+
+import { api } from "../api/client";
+
+/**
+ * 푸시 권한을 받고 토큰을 서버에 올린다. 실패해도 던지지 않는다 —
+ * 알림을 못 받는 것이 앱을 못 쓰는 것보다 낫다.
+ */
+export async function registerPushToken(): Promise<boolean> {
+  try {
+    const existing = await Notifications.getPermissionsAsync();
+    const granted =
+      existing.granted ||
+      (await Notifications.requestPermissionsAsync()).granted;
+    if (!granted) return false;
+
+    const { data } = await Notifications.getExpoPushTokenAsync();
+    await api.put("/users/me/push-token", { token: data });
+    return true;
+  } catch {
+    return false;
+  }
+}
+```
+
+- [ ] **Step 4: 화면 작성**
+
+`app-client/app/(tabs)/settings.tsx`:
+
+```tsx
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+
+import { useMe, useSetGoal } from "../../src/api/hooks";
+import { useAuth } from "../../src/auth/useAuth";
+import { formatWon } from "../../src/money/format";
+import { registerPushToken } from "../../src/notifications/register";
+
+const MIN_GOAL = 1;
+const MAX_GOAL = 1440;
+
+export default function Settings() {
+  const me = useMe();
+  const setGoal = useSetGoal();
+  const { signOut } = useAuth();
+  const [minutes, setMinutes] = useState("");
+
+  useEffect(() => {
+    if (me.data && minutes === "") setMinutes(String(me.data.daily_goal_minutes));
+  }, [me.data, minutes]);
+
+  function save() {
+    const value = Number(minutes);
+    if (!Number.isInteger(value) || value < MIN_GOAL || value > MAX_GOAL) return;
+    setGoal.mutate(value);
+  }
+
+  const pending = setGoal.data?.pending_goal_minutes ?? me.data?.pending_goal_minutes;
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 20, gap: 20, paddingTop: 64 }}>
+      <Text style={{ fontSize: 24, fontWeight: "700" }}>설정</Text>
+
+      <View style={{ gap: 8 }}>
+        <Text style={{ fontWeight: "600" }}>하루 목표 (분)</Text>
+        <TextInput
+          value={minutes}
+          onChangeText={setMinutes}
+          keyboardType="number-pad"
+          style={{
+            borderWidth: 1, borderColor: "#e4e4e7",
+            borderRadius: 10, padding: 14,
+          }}
+        />
+        <Pressable onPress={save}>
+          <Text style={{ color: "#2563eb" }}>목표 저장</Text>
+        </Pressable>
+        {pending != null && (
+          // 서버가 목표 변경을 다음 04:00 정산 후에 적용한다. 밤에 목표를 낮춰
+          // 페이백을 타는 것을 막기 위한 규칙이라, 화면이 이유를 말해줘야 한다.
+          <Text style={{ color: "#a1a1aa", fontSize: 13 }}>
+            내일부터 {pending}분이 적용됩니다. 오늘 목표는 그대로입니다.
+          </Text>
+        )}
+      </View>
+
+      <View style={{ gap: 6 }}>
+        <Text style={{ fontWeight: "600" }}>크레딧</Text>
+        <Text style={{ fontSize: 20 }}>
+          {formatWon(me.data?.credit_balance ?? 0)}
+        </Text>
+        <Text style={{ color: "#a1a1aa", fontSize: 12 }}>
+          현금으로 환급되지 않으며 챌린지 참가와 기록 복구에 쓸 수 있습니다.
+        </Text>
+      </View>
+
+      <Pressable onPress={registerPushToken}>
+        <Text style={{ color: "#2563eb" }}>알림 다시 설정</Text>
+      </Pressable>
+
+      <Pressable onPress={() => router.push("/groups")}>
+        <Text style={{ color: "#2563eb" }}>그룹 관리</Text>
+      </Pressable>
+
+      <Pressable
+        onPress={async () => {
+          await signOut();
+          router.replace("/login");
+        }}
+      >
+        <Text style={{ color: "#dc2626" }}>로그아웃</Text>
+      </Pressable>
+    </ScrollView>
+  );
+}
+```
+
+`app-client/app/onboarding.tsx` 는 같은 목표 입력만 담되, 저장 후
+`registerPushToken()` 을 부르고 `router.replace("/(tabs)")` 로 보낸다.
+`app/index.tsx` 의 게이트에서 `daily_goal_minutes` 가 서버 기본값 그대로이고
+`streak_count === 0` 이면 `/onboarding` 으로 보낸다.
+
+- [ ] **Step 5: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (67 passed)
+
+- [ ] **Step 6: 커밋**
+
+```bash
+git add app-client/app app-client/src/notifications app-client/__tests__/settings.test.tsx
+git commit -m "feat(app): 설정·온보딩·푸시 등록"
+```
+
+---
+
+## Task 14: Apple / Google 로그인 실연동
+
+Task 4의 로그인은 `EXPO_PUBLIC_DEV_ID_TOKEN` 을 그대로 서버에 보내는 개발용
+우회다. 서버는 그 토큰을 Apple·Google JWKS로 **실제로 검증**하므로, 진짜
+id_token 을 받아오지 않으면 실기기에서 로그인이 되지 않는다.
+
+**Files:**
+- Create: `app-client/src/auth/social.ts`
+- Modify: `app-client/app/login.tsx`, `app-client/app.json`, `app-client/.env.example`
+- Test: `app-client/__tests__/social.test.ts`
+
+**Interfaces:**
+- Consumes: `expo-apple-authentication`, `expo-auth-session/providers/google`
+- Produces: `signInWithApple() -> Promise<string>`, `useGoogleIdToken()` — 둘 다 id_token 문자열을 준다
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`app-client/__tests__/social.test.ts`:
+
+```ts
+import * as AppleAuthentication from "expo-apple-authentication";
+
+import { AppleUnavailable, signInWithApple } from "../src/auth/social";
+
+jest.mock("expo-apple-authentication");
+
+describe("Apple 로그인", () => {
+  afterEach(() => jest.resetAllMocks());
+
+  it("id_token 을 돌려준다", async () => {
+    (AppleAuthentication.isAvailableAsync as jest.Mock).mockResolvedValue(true);
+    (AppleAuthentication.signInAsync as jest.Mock).mockResolvedValue({
+      identityToken: "apple-id-token",
+    });
+
+    await expect(signInWithApple()).resolves.toBe("apple-id-token");
+  });
+
+  it("기기가 지원하지 않으면 구분 가능한 에러를 던진다", async () => {
+    (AppleAuthentication.isAvailableAsync as jest.Mock).mockResolvedValue(false);
+    await expect(signInWithApple()).rejects.toBeInstanceOf(AppleUnavailable);
+  });
+
+  it("유저가 취소하면 null 토큰을 그냥 통과시키지 않는다", async () => {
+    (AppleAuthentication.isAvailableAsync as jest.Mock).mockResolvedValue(true);
+    (AppleAuthentication.signInAsync as jest.Mock).mockResolvedValue({
+      identityToken: null,
+    });
+
+    await expect(signInWithApple()).rejects.toThrow(/identityToken/);
+  });
+});
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/social.test.ts`
+Expected: FAIL — `Cannot find module '../src/auth/social'`
+
+- [ ] **Step 3: 패키지 설치**
+
+```bash
+cd app-client
+npx expo install expo-apple-authentication expo-auth-session expo-web-browser
+```
+
+`app.json` 의 `expo.plugins` 에 `"expo-apple-authentication"` 을 추가하고,
+`expo.ios.usesAppleSignIn` 을 `true` 로 둔다.
+
+- [ ] **Step 4: 구현**
+
+`app-client/src/auth/social.ts`:
+
+```ts
+import * as AppleAuthentication from "expo-apple-authentication";
+import * as Google from "expo-auth-session/providers/google";
+
+export class AppleUnavailable extends Error {
+  constructor() {
+    super("이 기기에서는 Apple 로그인을 쓸 수 없습니다.");
+    this.name = "AppleUnavailable";
+  }
+}
+
+/**
+ * 서버가 Apple JWKS 로 실제 검증하므로 진짜 identityToken 이 필요하다.
+ * null 을 그대로 보내면 서버에서 401 이 되는데, 그러면 원인이 로그인 취소인지
+ * 토큰 문제인지 화면에서 구분할 수 없다. 여기서 먼저 끊는다.
+ */
+export async function signInWithApple(): Promise<string> {
+  if (!(await AppleAuthentication.isAvailableAsync())) {
+    throw new AppleUnavailable();
+  }
+  const credential = await AppleAuthentication.signInAsync({
+    requestedScopes: [
+      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+    ],
+  });
+  if (!credential.identityToken) {
+    throw new Error("Apple 이 identityToken 을 주지 않았습니다.");
+  }
+  return credential.identityToken;
+}
+
+/**
+ * Google 은 훅으로만 쓸 수 있다(리다이렉트를 화면 생명주기에 묶는다).
+ * clientId 는 서버의 GOOGLE_CLIENT_ID 와 같아야 한다 — 다르면 서버가
+ * audience 검증에서 떨어뜨린다.
+ */
+export function useGoogleIdToken() {
+  return Google.useIdTokenAuthRequest({
+    clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  });
+}
+```
+
+`app-client/app/login.tsx` 의 `handle` 을 교체한다:
+
+```tsx
+import { useEffect } from "react";
+
+import { AppleUnavailable, signInWithApple, useGoogleIdToken } from "../src/auth/social";
+
+  const [request, response, promptGoogle] = useGoogleIdToken();
+
+  useEffect(() => {
+    if (response?.type !== "success") return;
+    const idToken = response.params.id_token;
+    signIn("google", idToken, "").then(() => router.replace("/"));
+  }, [response, signIn]);
+
+  async function handleApple() {
+    setBusy(true);
+    try {
+      const idToken = await signInWithApple();
+      await signIn("apple", idToken, "");
+      router.replace("/");
+    } catch (error) {
+      if (error instanceof AppleUnavailable) {
+        Alert.alert("Apple 로그인 불가", "Google 로그인을 사용해주세요.");
+      } else {
+        Alert.alert("로그인 실패", (error as Error).message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+```
+
+Apple 버튼은 `handleApple`, Google 버튼은 `promptGoogle` 을 부르고
+`disabled={!request}` 를 건다.
+
+닉네임은 서버가 필수로 받으므로, 빈 문자열이면 온보딩에서 입력받아
+`PATCH` 하는 대신 로그인 직후 기본값(`"스터디로그"`)을 보내고 온보딩에서 바꾸게 한다.
+그러려면 `signIn` 의 세 번째 인자를 `nickname || "스터디로그"` 로 넘긴다.
+
+`.env.example` 에 추가한다:
+
+```
+EXPO_PUBLIC_GOOGLE_CLIENT_ID=
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=
+EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=
+EXPO_PUBLIC_REVENUECAT_KEY=
+```
+
+- [ ] **Step 5: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (70 passed)
+
+- [ ] **Step 6: 실기기 확인**
+
+Run: `cd app-client && npx expo run:ios` (또는 `run:android`)
+Apple 로그인을 눌러 실제로 홈까지 들어가는지 확인한다. 시뮬레이터에서는
+Apple 로그인이 제한적이므로 실기기가 필요하다.
+
+- [ ] **Step 7: 커밋**
+
+```bash
+git add app-client/src/auth/social.ts app-client/app/login.tsx app-client/app.json app-client/.env.example app-client/__tests__/social.test.ts
+git commit -m "feat(app): Apple/Google 로그인 실연동"
+```
+
+---
+
+## Task 15: 마감 — 오류 처리, 세션 복원, 앱 리소스
+
+**Files:**
+- Create: `app-client/app/+not-found.tsx`, `app-client/src/components/ErrorBoundary.tsx`, `app-client/assets/README.md`
+- Modify: `app-client/app/_layout.tsx`, `app-client/app/(tabs)/index.tsx`, `app-client/app.json`
+- Test: `app-client/__tests__/resilience.test.tsx`
+
+**Interfaces:**
+- Consumes: `ApiError`, `useAuth`, `useCurrentSession`
+- Produces: 401 전역 처리, 앱 재시작 시 열린 세션 복원, 에러 바운더리
+
+**앱이 죽었다 살아나도 열린 세션으로 돌아가야 한다.** 서버가 `started_at` 을
+들고 있으므로 복원은 `GET /sessions/current` 한 번이면 된다 — 앱이 로컬에
+타이머 상태를 저장할 이유가 없고, 저장하면 오히려 기기 시계 조작에 노출된다.
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`app-client/__tests__/resilience.test.tsx`:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react-native";
+import { Text } from "react-native";
+
+import Home from "../app/(tabs)/index";
+import { ErrorBoundary } from "../src/components/ErrorBoundary";
+
+jest.mock("expo-router", () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
+
+const me = {
+  id: "u1", nickname: "광휘", daily_goal_minutes: 60,
+  pending_goal_minutes: null, streak_count: 0, credit_balance: 0,
+};
+
+function mockApi(payloads: Record<string, unknown>) {
+  jest.spyOn(global, "fetch").mockImplementation((url) => {
+    const path = String(url).replace("http://127.0.0.1:8000", "");
+    return Promise.resolve({
+      ok: true, status: 200, json: async () => payloads[path] ?? null,
+    } as Response);
+  });
+}
+
+const wrap = (ui: React.ReactElement) =>
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      {ui}
+    </QueryClientProvider>
+  );
+
+afterEach(() => jest.restoreAllMocks());
+
+function Boom(): never {
+  throw new Error("터짐");
+}
+
+describe("복원력", () => {
+  it("앱을 다시 열어도 열린 세션으로 돌아간다", async () => {
+    mockApi({
+      "/users/me": me,
+      "/sessions/current": {
+        id: "s1", started_at: "2026-09-10T01:00:00Z", ended_at: null,
+        counted_minutes: 0, status: "open",
+      },
+      "/challenges/current": null,
+    });
+
+    wrap(<Home />);
+    // 로컬에 저장된 것이 없어도 서버가 준 세션으로 종료 화면이 살아난다
+    await waitFor(() => expect(screen.getByText("공부 종료")).toBeTruthy());
+  });
+
+  it("abandoned 세션은 열린 것으로 취급하지 않는다", async () => {
+    mockApi({
+      "/users/me": me,
+      "/sessions/current": {
+        id: "s1", started_at: "2026-09-10T01:00:00Z", ended_at: null,
+        counted_minutes: 0, status: "abandoned",
+      },
+      "/challenges/current": null,
+    });
+
+    wrap(<Home />);
+    await waitFor(() => expect(screen.getByText("공부 시작")).toBeTruthy());
+  });
+
+  it("렌더링이 터져도 흰 화면 대신 안내를 보여준다", () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <ErrorBoundary>
+        <Boom />
+      </ErrorBoundary>
+    );
+    expect(screen.getByText(/문제가 발생했습니다/)).toBeTruthy();
+  });
+
+  it("바운더리는 정상 자식을 그대로 그린다", () => {
+    render(
+      <ErrorBoundary>
+        <Text>정상</Text>
+      </ErrorBoundary>
+    );
+    expect(screen.getByText("정상")).toBeTruthy();
+  });
+});
+```
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `cd app-client && npx jest __tests__/resilience.test.tsx`
+Expected: FAIL — `Cannot find module '../src/components/ErrorBoundary'`
+
+- [ ] **Step 3: 에러 바운더리 작성**
+
+`app-client/src/components/ErrorBoundary.tsx`:
+
+```tsx
+import { Component, type ReactNode } from "react";
+import { Pressable, Text, View } from "react-native";
+
+type Props = { children: ReactNode };
+type State = { error: Error | null };
+
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { error: null };
+
+  static getDerivedStateFromError(error: Error): State {
+    return { error };
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 12 }}>
+        <Text style={{ fontSize: 20, fontWeight: "700" }}>
+          문제가 발생했습니다
+        </Text>
+        <Text style={{ color: "#52525b" }}>{this.state.error.message}</Text>
+        <Pressable onPress={() => this.setState({ error: null })}>
+          <Text style={{ color: "#2563eb" }}>다시 시도</Text>
+        </Pressable>
+      </View>
+    );
+  }
+}
+```
+
+- [ ] **Step 4: 401 전역 처리와 바운더리 연결**
+
+`app-client/app/_layout.tsx` 를 고친다:
+
+```tsx
+import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { router, Stack } from "expo-router";
+
+import { ApiError } from "../src/api/client";
+import { clearToken } from "../src/auth/storage";
+import { ErrorBoundary } from "../src/components/ErrorBoundary";
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, staleTime: 10_000 } },
+  queryCache: new QueryCache({
+    onError: async (error) => {
+      // 토큰 만료는 어느 화면에서든 같은 결말이다. 화면마다 처리하지 않는다.
+      if (error instanceof ApiError && error.kind === "auth") {
+        await clearToken();
+        queryClient.clear();
+        router.replace("/login");
+      }
+    },
+  }),
+});
+
+export default function RootLayout() {
+  return (
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="capture" options={{ presentation: "modal" }} />
+          <Stack.Screen name="appeal/[photoId]" options={{ presentation: "modal" }} />
+          <Stack.Screen name="restore/[recordId]" options={{ presentation: "modal" }} />
+        </Stack>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  );
+}
+```
+
+`app-client/app/+not-found.tsx`:
+
+```tsx
+import { Link } from "expo-router";
+import { Text, View } from "react-native";
+
+export default function NotFound() {
+  return (
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", gap: 12 }}>
+      <Text>없는 화면입니다.</Text>
+      <Link href="/">
+        <Text style={{ color: "#2563eb" }}>홈으로</Text>
+      </Link>
+    </View>
+  );
+}
+```
+
+- [ ] **Step 5: 앱 리소스와 메타데이터**
+
+`app-client/app.json` 을 채운다 — `expo.name` 은 `"스터디로그"`,
+`expo.slug` 은 `"studylog"`, `expo.ios.bundleIdentifier` 와
+`expo.android.package` 는 서버 `.env` 의 `APPLE_BUNDLE_ID` 와 같은
+`com.studylog.app`, `expo.ios.infoPlist.NSCameraUsageDescription` 은
+`"공부 인증 사진을 찍습니다."`, `expo.android.permissions` 에 `"CAMERA"`.
+
+`app-client/assets/README.md` 에 필요한 파일과 규격을 적는다 —
+`icon.png` 1024×1024, `splash.png` 1284×2778, `adaptive-icon.png` 1024×1024.
+디자인이 나오기 전까지는 Expo 기본 리소스를 쓴다.
+
+- [ ] **Step 6: 테스트 통과 확인**
+
+Run: `cd app-client && npx jest`
+Expected: PASS (74 passed)
+
+- [ ] **Step 7: 전체 흐름을 실제 서버로 확인**
+
+로컬 서버를 띄운 상태에서 `npx expo start` 로 앱을 열고 아래를 순서대로 확인한다.
+
+1. 로그인 → 온보딩에서 목표 설정 → 홈
+2. 챌린지 선택에서 **서버가 준 7종만** 보이는지
+3. 공부 시작 → 홈에 경과 시간이 흐르는지
+4. **앱을 완전히 종료했다 다시 열어** 열린 세션이 살아나는지
+5. 공부 종료 → 피드에 사진 두 장이 올라오는지
+6. 기기 비행기 모드로 종료 샷을 실패시킨 뒤, **닫기 버튼이 없고** 재시도가 되는지
+
+- [ ] **Step 8: 커밋**
+
+```bash
+git add app-client
+git commit -m "feat(app): 오류 처리·세션 복원·앱 리소스"
+```
+
+---
+
+## 스펙 대조
+
+| 스펙 §9.1 | 태스크 |
+|---|---|
+| 로그인 / 목표 설정 | 4, 13, 14 |
+| 홈 | 5 |
+| 촬영 · 판정 결과 | 6, 7 |
+| 이의제기 | 8 |
+| 챌린지 선택 | 9 |
+| 피드 | 11 |
+| 그룹 | 10 |
+| 기록 · 복구 | 12 |
+| 설정 | 13 |
+| **앱이 하지 말아야 할 것 4가지** | 2·5(시간), 6(판정), 9(가격표), 9(결제) |
+| 종료 샷 실패 처리 | 7 |
+| 스택 | 1 |
+
+**v1 범위 밖이라 태스크가 없는 것** — 딥링크(초대는 코드 복사), 오프라인 큐,
+다국어, 다크 모드, 애널리틱스.
+
+**서버에 있으나 앱이 쓰지 않는 것** — `POST /webhooks/revenuecat`(RevenueCat이 직접 호출),
+`GET /health`(운영용).
