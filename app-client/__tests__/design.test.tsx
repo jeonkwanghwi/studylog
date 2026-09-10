@@ -89,13 +89,19 @@ describe("DayGrid", () => {
     const cells = screen.getAllByTestId("day-cell");
     const backgrounds = cells.map((cell) => cell.props.style.backgroundColor);
 
-    expect(backgrounds[0]).toBe(color.accent);
-    expect(backgrounds[1]).toBe(`${color.negative}20`);
+    expect(backgrounds[0]).toBe(color.accentSoft);
+    expect(backgrounds[1]).toBe("#FEECEE");
     expect(backgrounds[2]).toBe(color.fill);
-    expect(backgrounds[3]).toBe(color.accentSoft);
+    expect(backgrounds[3]).toBe(color.accent);
     expect(new Set(backgrounds).size).toBe(4);
+  });
 
-    expect(cells[3].props.style.borderColor).toBe(color.accent);
-    expect(cells[3].props.style.borderWidth).toBe(1.5);
+  it("확보된 날이 오늘이면 secured 가 아니라 today 로 렌더링한다", async () => {
+    await render(
+      <DayGrid start="2026-09-01" days={1} marks={["secured"]} today="2026-09-01" />
+    );
+    const cell = screen.getByTestId("day-cell");
+    expect(cell.props.style.backgroundColor).toBe(color.accent);
+    expect(cell.props.style.backgroundColor).not.toBe(color.accentSoft);
   });
 });
