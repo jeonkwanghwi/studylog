@@ -9,6 +9,7 @@ import { uploadPhoto, type ShotKind } from "../src/api/upload";
 import { Button } from "../src/design/Button";
 import { T } from "../src/design/Text";
 import { color, radius, space } from "../src/design/tokens";
+import { remainingBeforeForfeit } from "../src/time/elapsed";
 
 type Phase =
   | { name: "ready" }
@@ -19,9 +20,10 @@ type Phase =
 const SHUTTER_SIZE = 76;
 
 export default function Capture() {
-  const { kind, sessionId } = useLocalSearchParams<{
+  const { kind, sessionId, startedAt } = useLocalSearchParams<{
     kind: ShotKind;
     sessionId?: string;
+    startedAt?: string;
   }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [phase, setPhase] = useState<Phase>({ name: "ready" });
@@ -82,14 +84,25 @@ export default function Capture() {
   }
 
   if (phase.name === "error") {
+    const isEnd = kind === "end";
+    const remaining = isEnd && startedAt ? remainingBeforeForfeit(startedAt, new Date()) : null;
+
     return (
       <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
         <T variant="title">사진을 올리지 못했습니다</T>
         <T variant="body" kind="sub">
           {phase.message}
         </T>
+        {isEnd && (
+          // 여기서 닫기를 주면 안 된다. 유저가 끝냈다고 믿고 나가면
+          // 세션은 4시간 뒤 0분으로 회수되고 그날 페이백도 사라진다.
+          <T variant="body" kind="negative">
+            아직 공부가 끝나지 않았습니다.
+            {remaining !== null && ` ${remaining}분 안에 종료하지 않으면 오늘 기록이 사라집니다.`}
+          </T>
+        )}
         <Button label="다시 시도" tone="primary" onPress={shoot} />
-        {kind === "start" && <Button label="닫기" tone="text" onPress={() => router.back()} />}
+        {!isEnd && <Button label="닫기" tone="text" onPress={() => router.back()} />}
       </View>
     );
   }
