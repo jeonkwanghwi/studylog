@@ -9,6 +9,7 @@ export type UserOut = {
 
 export type SessionOut = {
   id: string;
+  activity: string;
   started_at: string;
   ended_at: string | null;
   counted_minutes: number;

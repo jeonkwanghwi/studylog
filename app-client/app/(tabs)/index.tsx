@@ -120,6 +120,7 @@ export default function Home() {
 
       {open ? (
         <View style={{ gap: space.base }}>
+          <T variant="section" kind="sub">{open.activity}</T>
           <T variant="hero">{formatElapsed(elapsedMinutes(open.started_at, now))}</T>
           {remaining <= WARN_UNDER_MINUTES && (
             <T variant="caption" kind="negative">

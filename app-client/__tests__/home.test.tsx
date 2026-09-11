@@ -63,6 +63,7 @@ describe("홈", () => {
       "/users/me": me,
       "/sessions/current": {
         id: "s1",
+        activity: "수학 문제집 풀기",
         started_at: startedAt,
         ended_at: null,
         counted_minutes: 0,
@@ -72,6 +73,8 @@ describe("홈", () => {
     });
     await waitFor(() => expect(screen.getByText("공부 종료")).toBeTruthy());
     expect(screen.getByText("1시간 35분")).toBeTruthy();
+    // 타이머만 있으면 무엇을 하기로 했는지 잊는다. 선언이 판정 기준이기도 하다.
+    expect(screen.getByText("수학 문제집 풀기")).toBeTruthy();
   });
 
   it("abandoned·closed 세션은 시작 전 상태로 취급한다", async () => {
