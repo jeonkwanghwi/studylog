@@ -42,7 +42,11 @@ export default function RootLayout() {
           headerShown: false,
           contentStyle: { backgroundColor: color.bg },
         }}
-      />
+      >
+        <Stack.Screen name="capture" options={{ presentation: "modal" }} />
+        <Stack.Screen name="appeal/[photoId]" options={{ presentation: "modal" }} />
+        <Stack.Screen name="restore/[recordId]" options={{ presentation: "modal" }} />
+      </Stack>
     </QueryClientProvider>
   );
 }
