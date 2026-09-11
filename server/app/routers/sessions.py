@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app import notifications
@@ -20,7 +20,7 @@ router = APIRouter(tags=["sessions"])
 
 async def ingest_photo(
     db: Session, user: User, kind: str, image: bytes,
-    storage: PhotoStorage, judge: JudgeProvider, received_at,
+    storage: PhotoStorage, judge: JudgeProvider, received_at, activity: str,
     attempt: int = 1, appeal_text: str | None = None,
 ) -> tuple[Photo, bool]:
     """사진을 저장하고 판정한다. (photo, 통과 여부)를 돌려준다."""
@@ -30,11 +30,12 @@ async def ingest_photo(
     storage.put(key, processed.jpeg)
 
     photo = Photo(id=photo_id, user_id=user.id, kind=kind, s3_key=key,
+                  activity=activity,
                   phash=processed.phash, exif_taken_at=processed.taken_at,
                   received_at=received_at, status="pass")
     db.add(photo)
 
-    verdict = await judge_photo(judge, processed.jpeg, appeal_text)
+    verdict = await judge_photo(judge, processed.jpeg, activity, appeal_text)
     ok = is_pass(verdict, settings.judge_fail_confidence)
     photo.status = "pass" if ok else "fail"
 
@@ -68,22 +69,30 @@ def notify_rejection(user: User, reason: str) -> None:
 
 @router.post("/sessions/start", response_model=JudgeResultOut)
 async def start_session(
+    activity: str = Form(...),
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     storage: PhotoStorage = Depends(get_storage),
     judge: JudgeProvider = Depends(get_judge),
 ) -> JudgeResultOut:
+    activity = activity.strip()
+    if not activity or len(activity) > 100:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "활동 선언은 1자 이상 100자 이하여야 합니다"
+        )
+
     received_at = now_utc()          # 타이머 기준은 요청이 도착한 시각이다
     if _open_session(db, user.id) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "이미 진행 중인 세션이 있습니다")
 
     photo, ok = await ingest_photo(
-        db, user, "start", await image.read(), storage, judge, received_at
+        db, user, "start", await image.read(), storage, judge, received_at, activity
     )
     session = None
     if ok:
         session = StudySession(user_id=user.id, start_photo_id=photo.id,
+                               activity=activity,
                                started_at=photo.received_at, status="open")
         db.add(session)
     db.commit()
@@ -124,7 +133,8 @@ async def end_session(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "진행 중인 세션이 아닙니다")
 
     photo, ok = await ingest_photo(
-        db, user, "end", await image.read(), storage, judge, received_at
+        db, user, "end", await image.read(), storage, judge, received_at,
+        session.activity,
     )
     if ok:
         close_session(session, photo)

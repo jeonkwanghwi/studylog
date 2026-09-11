@@ -83,6 +83,7 @@ class Photo(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     kind: Mapped[str] = mapped_column(String(8))            # start | end
     s3_key: Mapped[str] = mapped_column(String(255))
+    activity: Mapped[str | None] = mapped_column(String(100), nullable=True)
     phash: Mapped[str | None] = mapped_column(String(32), nullable=True)
     exif_taken_at: Mapped[datetime | None] = mapped_column(TS, nullable=True)
     received_at: Mapped[datetime] = mapped_column(TS, default=now_utc)
@@ -96,6 +97,7 @@ class StudySession(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     start_photo_id: Mapped[str] = mapped_column(ForeignKey("photos.id"))
     end_photo_id: Mapped[str | None] = mapped_column(ForeignKey("photos.id"), nullable=True)
+    activity: Mapped[str] = mapped_column(String(100))
     started_at: Mapped[datetime] = mapped_column(TS)
     ended_at: Mapped[datetime | None] = mapped_column(TS, nullable=True)
     counted_minutes: Mapped[int] = mapped_column(Integer, default=0)

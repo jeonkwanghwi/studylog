@@ -5,8 +5,9 @@ from app.models import DailyRecord, Photo, StudySession, Verdict as VerdictRow
 from app.time_utils import now_utc, study_day
 
 
-def start(client, auth, jpeg):
+def start(client, auth, jpeg, activity="공부"):
     return client.post("/sessions/start", headers=auth,
+                       data={"activity": activity},
                        files={"image": ("s.jpg", jpeg, "image/jpeg")}).json()
 
 
@@ -16,14 +17,16 @@ def appeal(client, auth, photo_id, text="태블릿으로 인강 듣는 중입니
 
 def test_successful_appeal_on_a_start_shot_opens_a_session(client, auth, jpeg, db, judge):
     judge.verdict = Verdict("fail", 0.95, "화면만 보입니다.", {})
-    photo_id = start(client, auth, jpeg)["photo_id"]
+    photo_id = start(client, auth, jpeg, activity="태블릿 필기")["photo_id"]
 
     judge.verdict = Verdict("pass", 0.85, "인강 화면입니다.", {})
     body = appeal(client, auth, photo_id).json()
 
     assert body["result"] == "pass"
     assert body["session"]["status"] == "open"
+    assert body["session"]["activity"] == "태블릿 필기"
     assert db.get(Photo, photo_id).status == "pass"
+    assert judge.seen_activity == "태블릿 필기"
 
 
 def test_start_shot_appeal_uses_the_rejudge_time_not_the_original(client, auth, jpeg, db, judge):

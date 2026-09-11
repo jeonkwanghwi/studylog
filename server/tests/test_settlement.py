@@ -25,7 +25,8 @@ def add_session(db, user, day, minutes, status="closed"):
     photo = Photo(user_id=user.id, kind="start", s3_key="k", received_at=at, status="pass")
     db.add(photo)
     db.flush()
-    db.add(StudySession(user_id=user.id, start_photo_id=photo.id, started_at=at,
+    db.add(StudySession(user_id=user.id, start_photo_id=photo.id, activity="공부",
+                        started_at=at,
                         ended_at=at + timedelta(minutes=minutes),
                         counted_minutes=minutes, status=status))
     db.commit()

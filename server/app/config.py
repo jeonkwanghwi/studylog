@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     judge_model: str = "claude-haiku-4-5"
     judge_fail_confidence: float = 0.7
     judge_timeout_seconds: float = 10.0
+    judge_retry_attempts: int = 3
+    judge_retry_backoff_seconds: float = 0.5
     anthropic_api_key: str = ""
     openai_api_key: str = ""
 

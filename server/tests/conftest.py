@@ -49,8 +49,12 @@ class StubJudge:
 
     def __init__(self) -> None:
         self.verdict = Verdict("pass", 0.9, "책상에서 공부 중입니다.", {})
+        self.seen_activity = None
+        self.calls = 0
 
-    async def judge(self, image, appeal_text=None):
+    async def judge(self, image, activity, appeal_text=None):
+        self.calls += 1
+        self.seen_activity = activity
         return self.verdict
 
 

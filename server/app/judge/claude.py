@@ -26,7 +26,9 @@ class ClaudeJudge:
         self.model = model
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
 
-    async def judge(self, image: bytes, appeal_text: str | None = None) -> Verdict:
+    async def judge(
+        self, image: bytes, activity: str, appeal_text: str | None = None
+    ) -> Verdict:
         message = await self._client.messages.create(
             model=self.model,
             max_tokens=256,
@@ -40,7 +42,7 @@ class ClaudeJudge:
                         "media_type": "image/jpeg",
                         "data": base64.b64encode(image).decode(),
                     }},
-                    {"type": "text", "text": build_prompt(appeal_text)},
+                    {"type": "text", "text": build_prompt(activity, appeal_text)},
                 ],
             }],
         )

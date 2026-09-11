@@ -28,6 +28,7 @@ def test_feed_lists_every_member(client, auth, jpeg, db, monkeypatch):
 def test_closed_sessions_show_up_with_photos(client, auth, jpeg, db):
     group = client.post("/groups", headers=auth, json={"name": "고시반"}).json()
     session_id = client.post("/sessions/start", headers=auth,
+                             data={"activity": "공부"},
                              files={"image": ("s.jpg", jpeg, "image/jpeg")}
                              ).json()["session"]["id"]
     session = db.get(StudySession, session_id)
@@ -45,6 +46,7 @@ def test_closed_sessions_show_up_with_photos(client, auth, jpeg, db):
 def test_open_sessions_are_not_counted_yet(client, auth, jpeg, db):
     group = client.post("/groups", headers=auth, json={"name": "고시반"}).json()
     client.post("/sessions/start", headers=auth,
+                data={"activity": "공부"},
                 files={"image": ("s.jpg", jpeg, "image/jpeg")})
 
     item = client.get(f"/groups/{group['id']}/feed", headers=auth).json()[0]
@@ -79,6 +81,7 @@ def test_failed_photos_are_hidden_from_the_feed(client, auth, jpeg, db, judge):
     group = client.post("/groups", headers=auth, json={"name": "고시반"}).json()
     judge.verdict = Verdict("fail", 0.95, "게임입니다.", {})
     client.post("/sessions/start", headers=auth,
+                data={"activity": "공부"},
                 files={"image": ("s.jpg", jpeg, "image/jpeg")})
 
     item = client.get(f"/groups/{group['id']}/feed", headers=auth).json()[0]

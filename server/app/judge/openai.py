@@ -50,7 +50,9 @@ class OpenAIJudge:
         self.model = model
         self._client = AsyncOpenAI(api_key=api_key)
 
-    async def judge(self, image: bytes, appeal_text: str | None = None) -> Verdict:
+    async def judge(
+        self, image: bytes, activity: str, appeal_text: str | None = None
+    ) -> Verdict:
         response = await self._client.chat.completions.create(
             model=self.model,
             response_format=VERDICT_RESPONSE_FORMAT,
@@ -60,7 +62,7 @@ class OpenAIJudge:
                     {"type": "image_url", "image_url": {
                         "url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}",
                     }},
-                    {"type": "text", "text": build_prompt(appeal_text)},
+                    {"type": "text", "text": build_prompt(activity, appeal_text)},
                 ],
             }],
         )

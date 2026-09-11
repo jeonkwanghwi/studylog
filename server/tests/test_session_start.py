@@ -2,23 +2,40 @@ from app.judge.base import Verdict
 from app.models import Photo, StudySession, Verdict as VerdictRow
 
 
-def start(client, auth, jpeg):
+def start(client, auth, jpeg, activity="공부"):
     return client.post("/sessions/start", headers=auth,
+                       data={"activity": activity},
                        files={"image": ("shot.jpg", jpeg, "image/jpeg")})
 
 
 def test_pass_opens_a_session(client, auth, jpeg, db):
-    r = start(client, auth, jpeg)
+    r = start(client, auth, jpeg, activity="수학 문제집")
     assert r.status_code == 200
     body = r.json()
     assert body["result"] == "pass"
     assert body["session"]["status"] == "open"
+    assert body["session"]["activity"] == "수학 문제집"
 
     session = db.query(StudySession).one()
     photo = db.query(Photo).one()
     assert session.start_photo_id == photo.id
     assert session.started_at == photo.received_at
+    assert session.activity == "수학 문제집"
     assert photo.kind == "start" and photo.status == "pass"
+
+
+def test_blank_activity_is_rejected_without_calling_the_judge(client, auth, jpeg, db, judge):
+    r = start(client, auth, jpeg, activity="   ")
+    assert r.status_code == 422
+    assert judge.calls == 0
+    assert db.query(Photo).count() == 0
+
+
+def test_activity_over_100_chars_is_rejected(client, auth, jpeg, db, judge):
+    r = start(client, auth, jpeg, activity="가" * 101)
+    assert r.status_code == 422
+    assert judge.calls == 0
+    assert db.query(Photo).count() == 0
 
 
 def test_confident_fail_does_not_open_a_session(client, auth, jpeg, db, judge):

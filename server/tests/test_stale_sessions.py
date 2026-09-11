@@ -29,7 +29,7 @@ def open_session(db, user, age_minutes):
     photo = Photo(user_id=user.id, kind="start", s3_key="k", received_at=at, status="pass")
     db.add(photo)
     db.flush()
-    session = StudySession(user_id=user.id, start_photo_id=photo.id,
+    session = StudySession(user_id=user.id, start_photo_id=photo.id, activity="공부",
                            started_at=at, status="open")
     db.add(session)
     db.commit()

@@ -44,7 +44,7 @@ async def appeal_photo(
         raise HTTPException(status.HTTP_409_CONFLICT, "이미 종료된 세션입니다")
 
     rejudged_at = now_utc()
-    verdict = await judge_photo(judge, storage.get(photo.s3_key), body.text)
+    verdict = await judge_photo(judge, storage.get(photo.s3_key), photo.activity, body.text)
     ok = is_pass(verdict, settings.judge_fail_confidence)
 
     db.add(Verdict(photo_id=photo.id, attempt=2, appeal_text=body.text,
@@ -78,6 +78,7 @@ def _apply_passed_appeal(
         if db.query(StudySession).filter_by(user_id=user.id, status="open").count():
             return None
         session = StudySession(user_id=user.id, start_photo_id=photo.id,
+                               activity=photo.activity,
                                started_at=rejudged_at, status="open")
         db.add(session)
         db.flush()

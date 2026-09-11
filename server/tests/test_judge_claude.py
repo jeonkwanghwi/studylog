@@ -5,16 +5,19 @@ from app.judge.prompt import build_prompt
 from app.judge.registry import build_provider
 
 
-def test_prompt_lists_the_wide_pass_range():
-    prompt = build_prompt(None)
-    for allowed in ["종이책", "노트북", "태블릿", "인강"]:
-        assert allowed in prompt
-    for rejected in ["게임", "재촬영"]:
-        assert rejected in prompt
+def test_prompt_includes_the_declared_activity_verbatim():
+    prompt = build_prompt("런닝머신 30분", None)
+    assert "런닝머신 30분" in prompt
+
+
+def test_prompt_states_the_wide_acceptance_and_reject_only_mismatch_policy():
+    prompt = build_prompt("수학 문제집", None)
+    assert "재촬영" in prompt
+    assert "확신이 없으면 통과" in prompt
 
 
 def test_appeal_text_is_marked_as_a_hint_not_evidence():
-    prompt = build_prompt("태블릿으로 인강 듣는 중입니다")
+    prompt = build_prompt("공부", "태블릿으로 인강 듣는 중입니다")
     assert "태블릿으로 인강 듣는 중입니다" in prompt
     assert "참고" in prompt and "이미지" in prompt
 

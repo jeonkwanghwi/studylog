@@ -4,13 +4,16 @@ from app.judge.base import Verdict
 from app.models import Photo, StudySession
 
 
-def start(client, auth, jpeg):
+def start(client, auth, jpeg, activity="공부"):
     return client.post("/sessions/start", headers=auth,
+                       data={"activity": activity},
                        files={"image": ("s.jpg", jpeg, "image/jpeg")}).json()
 
 
-def end(client, auth, jpeg, session_id):
+def end(client, auth, jpeg, session_id, activity=None):
+    data = {"activity": activity} if activity is not None else None
     return client.post(f"/sessions/{session_id}/end", headers=auth,
+                       data=data,
                        files={"image": ("e.jpg", jpeg, "image/jpeg")})
 
 
@@ -70,3 +73,13 @@ def test_cannot_end_a_closed_session(client, auth, jpeg):
     session_id = start(client, auth, jpeg)["session"]["id"]
     end(client, auth, jpeg, session_id)
     assert end(client, auth, jpeg, session_id).status_code == 404
+
+
+def test_end_is_judged_against_the_declared_start_activity(client, auth, jpeg, db, judge):
+    session_id = start(client, auth, jpeg, activity="런닝머신 30분")["session"]["id"]
+
+    end(client, auth, jpeg, session_id, activity="운동하기")
+    assert judge.seen_activity == "런닝머신 30분"
+
+    session = db.get(StudySession, session_id)
+    assert session.activity == "런닝머신 30분"

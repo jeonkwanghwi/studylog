@@ -27,6 +27,7 @@ class LoginOut(BaseModel):
 
 class SessionOut(BaseModel):
     id: str
+    activity: str
     started_at: datetime
     ended_at: datetime | None
     counted_minutes: int
