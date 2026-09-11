@@ -69,10 +69,14 @@ describe("기록", () => {
     await waitFor(() => expect(screen.getAllByText("복구하기")).toHaveLength(1));
   });
 
-  it("크레딧이 모자라면 복구 버튼 대신 부족 안내를 한다", async () => {
+  it("크레딧이 모자라면 얼마가 있고 어떻게 모으는지까지 말한다", async () => {
+    // "안 된다"만 말하면 막다른 길이다 — 크레딧 구매 화면은 없고,
+    // 목표를 채우는 것만이 크레딧을 얻는 길이다.
     mockApi({ "/users/me": { ...me, credit_balance: 500 } });
     await wrap(<Records />);
-    await waitFor(() => expect(screen.getByText(/크레딧이 부족/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/2,000원이 필요해요/)).toBeTruthy());
+    expect(screen.getByText(/지금 크레딧은 500원/)).toBeTruthy();
+    expect(screen.getByText(/목표를 채운 날마다 쌓입니다/)).toBeTruthy();
     expect(screen.queryByText("복구하기")).toBeNull();
   });
 

@@ -41,8 +41,11 @@ const NUMBER_KIND: Record<CellState, "muted" | "accent" | "negative" | "text"> =
   today: "text", // overridden to white below
 };
 
+// missed 에도 굵기를 준다 — 색만으로 구분하면 색각 이상이 있는 사람에게
+// 실패한 날과 아직 오지 않은 날이 똑같아 보인다.
 const NUMBER_FONT: Partial<Record<CellState, string>> = {
   secured: fonts.MEDIUM,
+  missed: fonts.BOLD,
   today: fonts.BOLD,
 };
 

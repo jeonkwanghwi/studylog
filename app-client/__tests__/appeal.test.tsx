@@ -3,9 +3,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 
 import Appeal from "../app/appeal/[photoId]";
 
+const mockSetOptions = jest.fn();
 jest.mock("expo-router", () => ({
   router: { back: jest.fn(), replace: jest.fn() },
   useLocalSearchParams: () => ({ photoId: "p1" }),
+  useNavigation: () => ({ setOptions: mockSetOptions }),
 }));
 
 const wrap = () =>
@@ -28,6 +30,34 @@ describe("이의제기", () => {
     await wrap();
     await fireEvent.press(screen.getByText("다시 판정 요청"));
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("전송 중에는 모달을 쓸어 내려 나갈 수 없다", async () => {
+    // 나가버리면 서버는 그대로 처리해서 유일한 기회가 소모되는데,
+    // 인정됐는지 거절됐는지는 영영 못 본다.
+    let resolve: (r: Response) => void = () => {};
+    jest.spyOn(global, "fetch").mockReturnValue(
+      new Promise<Response>((r) => {
+        resolve = r;
+      })
+    );
+    await wrap();
+    await fireEvent.changeText(screen.getByPlaceholderText(/무엇을 하고 있었는지/), "런닝머신입니다");
+    // await 하지 않는다 — fetch 가 아직 안 끝난 상태 그대로를 봐야 한다.
+    fireEvent.press(screen.getByText("다시 판정 요청"));
+
+    await waitFor(() =>
+      expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: false })
+    );
+
+    resolve({
+      ok: true, status: 200,
+      json: async () => ({ result: "pass", photo_id: "p1", reason: "", session: null }),
+    } as Response);
+
+    await waitFor(() =>
+      expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: true })
+    );
   });
 
   it("통과하면 결과를 보여준다", async () => {

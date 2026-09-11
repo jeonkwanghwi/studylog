@@ -1,6 +1,6 @@
-import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
-import { KeyboardAvoidingView, Platform, TextInput } from "react-native";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
+import { useEffect, useState } from "react";
+import { BackHandler, KeyboardAvoidingView, Platform, TextInput } from "react-native";
 
 import { ApiError, api } from "../../src/api/client";
 import { useInvalidateAll } from "../../src/api/hooks";
@@ -22,6 +22,21 @@ export default function Appeal() {
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>({ name: "writing" });
   const invalidate = useInvalidateAll();
+  const navigation = useNavigation();
+
+  // 이의제기는 사진당 한 번뿐이다. 전송 중에 모달을 아래로 쓸어 내리면
+  // 서버는 그대로 처리해서 유일한 기회가 소모되는데, 결과는 영영 못 본다.
+  const sending = phase.name === "sending";
+
+  useEffect(() => {
+    if (!sending) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => true);
+    return () => sub.remove();
+  }, [sending]);
+
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !sending });
+  }, [navigation, sending]);
 
   async function send() {
     if (!text.trim()) return;
@@ -92,6 +107,7 @@ export default function Appeal() {
         onChangeText={setText}
         editable={phase.name !== "sending"}
         multiline
+        maxLength={300}
         placeholder="예: 무엇을 하고 있었는지 적어주세요 (태블릿 인강 등)"
         placeholderTextColor={color.textMuted}
         style={{

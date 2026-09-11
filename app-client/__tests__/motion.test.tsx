@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { AccessibilityInfo, Text } from "react-native";
 
 import { Button } from "../src/design/Button";
+import { LoadFailed } from "../src/design/LoadFailed";
 import { Skeleton } from "../src/design/Skeleton";
 import { Toast } from "../src/design/Toast";
 import { Touchable } from "../src/design/Touchable";
@@ -100,5 +101,17 @@ describe("토스트", () => {
   it("메시지가 있으면 보여준다", async () => {
     await render(<Toast message="초대코드를 복사했어요" onHide={() => {}} />);
     expect(screen.getByText("초대코드를 복사했어요")).toBeTruthy();
+  });
+});
+
+describe("불러오기 실패 안내", () => {
+  it("받침에 따라 을/를을 고른다", async () => {
+    await render(<LoadFailed what="기록" onRetry={() => {}} />);
+    expect(screen.getByText(/기록을 불러오지 못했습니다/)).toBeTruthy();
+  });
+
+  it("받침이 없으면 를을 쓴다", async () => {
+    await render(<LoadFailed what="현재 상태" onRetry={() => {}} />);
+    expect(screen.getByText(/현재 상태를 불러오지 못했습니다/)).toBeTruthy();
   });
 });

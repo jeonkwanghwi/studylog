@@ -5,6 +5,7 @@ import { useMe, useRecords } from "../../src/api/hooks";
 import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
+import { LoadFailed } from "../../src/design/LoadFailed";
 import { ListSkeleton } from "../../src/design/Skeleton";
 import { T } from "../../src/design/Text";
 import { color, space } from "../../src/design/tokens";
@@ -26,6 +27,10 @@ export default function Records() {
 
   if (records.isLoading) {
     return <ListSkeleton />;
+  }
+
+  if (records.isError) {
+    return <LoadFailed what="기록" onRetry={() => records.refetch()} />;
   }
 
   const list = records.data ?? [];
@@ -85,7 +90,8 @@ export default function Records() {
                 />
               ) : (
                 <T variant="caption" kind="muted">
-                  복구하려면 크레딧이 부족합니다 ({formatWon(RESTORE_COST)} 필요)
+                  복구에는 {formatWon(RESTORE_COST)}이 필요해요. 지금 크레딧은{" "}
+                  {formatWon(balance)}입니다 — 목표를 채운 날마다 쌓입니다.
                 </T>
               ))}
           </Card>

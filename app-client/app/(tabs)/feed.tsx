@@ -7,6 +7,7 @@ import type { FeedItemOut } from "../../src/api/types";
 import { PhotoGrid } from "../../src/components/PhotoGrid";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
+import { LoadFailed } from "../../src/design/LoadFailed";
 import { ListSkeleton } from "../../src/design/Skeleton";
 import { T } from "../../src/design/Text";
 import { Touchable } from "../../src/design/Touchable";
@@ -30,6 +31,12 @@ export default function Feed() {
 
   if (groups.isLoading) {
     return <ListSkeleton rows={2} />;
+  }
+
+  // 그룹 조회 실패를 "그룹이 없음"으로 보여주면, 그룹이 있는 사람에게
+  // 그룹을 만들라고 권하게 된다.
+  if (groups.isError) {
+    return <LoadFailed what="그룹" onRetry={() => groups.refetch()} />;
   }
 
   if (list.length === 0) {
@@ -71,8 +78,10 @@ export default function Feed() {
                 feedback={false}
                 onPress={() => setSelected(group.id)}
                 style={{
+                  // 44pt — 그 아래로는 손가락이 자주 빗나간다.
+                  minHeight: 44,
+                  justifyContent: "center",
                   paddingHorizontal: space.base,
-                  paddingVertical: space.sm,
                   borderRadius: radius.pill,
                   backgroundColor: active ? color.accentSoft : color.fill,
                 }}
@@ -84,6 +93,12 @@ export default function Feed() {
             );
           })}
         </ScrollView>
+      )}
+
+      {!feed.isLoading && (feed.data ?? []).length === 0 && (
+        <T variant="body" kind="sub">
+          이 그룹에는 아직 오늘 인증한 사람이 없어요. 먼저 올려보세요.
+        </T>
       )}
 
       {(feed.data ?? []).map((item) => (
@@ -98,7 +113,9 @@ function FeedRow({ item }: { item: FeedItemOut }) {
   return (
     <Card style={{ gap: space.sm }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <T variant="section">{item.nickname}</T>
+        <T variant="section" numberOfLines={1} style={{ flexShrink: 1 }}>
+          {item.nickname}
+        </T>
         <T variant="caption" kind="muted">
           {item.streak_count}일 연속
         </T>

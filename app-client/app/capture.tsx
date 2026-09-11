@@ -1,7 +1,7 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, BackHandler, View } from "react-native";
+import { ActivityIndicator, BackHandler, Linking, View } from "react-native";
 
 import { ApiError } from "../src/api/client";
 import { useInvalidateAll } from "../src/api/hooks";
@@ -77,12 +77,23 @@ export default function Capture() {
   }
 
   if (!permission?.granted) {
+    // 한 번 완전히 거부하면 requestPermission() 은 OS 다이얼로그를 다시 띄우지
+    // 않고 조용히 아무 일도 하지 않는다. 그 상태에서 이 화면만 주면 인증을
+    // 영영 못 해서 그날 공부를 시작할 수도, 끝낼 수도 없다.
+    const askable = permission?.canAskAgain !== false;
     return (
       <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.md }}>
         <T variant="body" kind="sub">
-          공부 인증에는 카메라가 필요합니다. 책상 사진을 찍어 AI가 확인해요.
+          {askable
+            ? "공부 인증에는 카메라가 필요합니다. 책상 사진을 찍어 AI가 확인해요."
+            : "카메라 권한이 꺼져 있어 인증을 할 수 없습니다. 설정에서 카메라를 켜주세요."}
         </T>
-        <Button label="카메라 권한 허용" tone="primary" onPress={requestPermission} />
+        {askable ? (
+          <Button label="카메라 권한 허용" tone="primary" onPress={requestPermission} />
+        ) : (
+          <Button label="설정 열기" tone="primary" onPress={() => Linking.openSettings()} />
+        )}
+        <Button label="닫기" tone="text" onPress={() => router.back()} />
       </View>
     );
   }

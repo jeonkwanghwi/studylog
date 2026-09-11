@@ -1,6 +1,13 @@
-import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+  focusManager,
+} from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
+import { useEffect } from "react";
+import { AppState } from "react-native";
 
 import { ApiError } from "../src/api/client";
 import { clearToken } from "../src/auth/storage";
@@ -29,6 +36,17 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+  // React Query 의 포커스 감지는 웹의 window 이벤트에 기대고 있어서 RN 에서는
+  // 아무 일도 하지 않는다. 직접 이어주지 않으면 앱을 두 시간 두고 돌아와도
+  // 나갈 때의 데이터가 그대로 있다 — 그 사이 세션이 회수됐거나 정산이 끝나
+  // 돈이 들어왔어도 화면은 모른다.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (status) =>
+      focusManager.setFocused(status === "active")
+    );
+    return () => sub.remove();
+  }, []);
+
   const [loaded] = useFonts({
     [fonts.REGULAR]: require("../assets/fonts/Pretendard-Regular.otf"),
     [fonts.MEDIUM]: require("../assets/fonts/Pretendard-Medium.otf"),

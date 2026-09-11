@@ -8,6 +8,7 @@ import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { DayGrid, isoDateAtOffset, type Mark } from "../../src/design/DayGrid";
+import { LoadFailed } from "../../src/design/LoadFailed";
 import { ScreenSkeleton } from "../../src/design/Skeleton";
 import { T } from "../../src/design/Text";
 import { color, space } from "../../src/design/tokens";
@@ -62,6 +63,22 @@ export default function Home() {
   // 순간 사진 한 장과 유료 AI 판정 호출이 409로 날아간다.
   if (session.isLoading) {
     return <ScreenSkeleton />;
+  }
+
+  // 조회가 실패했는데 data 를 "없음"으로 읽으면, 열려 있는 세션의 4시간 폐기
+  // 경고가 통째로 사라지고 "공부 시작"이 뜬다. 활성 챌린지 쪽은 더 나쁘다 —
+  // "챌린지 시작"이 떠서 재구매로 이어지면 서버는 이미 활성 챌린지가 있다는
+  // 이유로 두 번째 챌린지를 열어주지 않고 영수증만 남는다.
+  if (session.isError || challenge.isError) {
+    return (
+      <LoadFailed
+        what="현재 상태"
+        onRetry={() => {
+          session.refetch();
+          challenge.refetch();
+        }}
+      />
+    );
   }
 
   // open 만 진행 중인 세션이다. abandoned·closed 는 시작 전 상태로 취급한다.

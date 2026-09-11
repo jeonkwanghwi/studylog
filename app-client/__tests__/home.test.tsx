@@ -48,6 +48,23 @@ const challenge = {
 afterEach(() => jest.restoreAllMocks());
 
 describe("홈", () => {
+  it("상태 조회가 실패하면 '시작' 버튼 대신 재시도를 준다", async () => {
+    // data 를 "없음"으로 읽으면 활성 챌린지가 있는데도 "챌린지 시작"이 뜨고,
+    // 거기서 다시 사면 서버는 챌린지를 안 열어주고 영수증만 남는다.
+    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <Home />
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => expect(screen.getByText(/현재 상태를 불러오지 못했습니다/)).toBeTruthy());
+    expect(screen.getByText("다시 시도")).toBeTruthy();
+    expect(screen.queryByText("공부 시작")).toBeNull();
+    expect(screen.queryByText("챌린지 시작")).toBeNull();
+  });
+
   it("세션이 없으면 시작 버튼을 보여준다", async () => {
     renderWithData({
       "/users/me": me,

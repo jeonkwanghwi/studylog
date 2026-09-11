@@ -53,7 +53,9 @@ export default function Declare() {
             accessibilityRole="button"
             onPress={() => setActivity(s)}
             style={{
-              paddingVertical: space.sm,
+              // 44pt — 그 아래로는 손가락이 자주 빗나간다.
+              minHeight: 44,
+              justifyContent: "center",
               paddingHorizontal: space.base,
               borderRadius: radius.pill,
               backgroundColor: color.fill,

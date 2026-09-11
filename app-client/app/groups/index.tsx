@@ -113,6 +113,7 @@ export default function Groups() {
         <TextInput
           value={name}
           onChangeText={setName}
+          maxLength={20}
           placeholder="그룹 이름"
           placeholderTextColor={color.textMuted}
           style={inputStyle}

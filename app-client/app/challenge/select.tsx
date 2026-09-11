@@ -1,6 +1,6 @@
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, View } from "react-native";
+import { ActivityIndicator, Alert, BackHandler, ScrollView, View } from "react-native";
 
 import { ApiError, api } from "../../src/api/client";
 import { useCurrentChallenge, useInvalidateAll, useMe, useProducts } from "../../src/api/hooks";
@@ -30,6 +30,10 @@ export default function Select() {
   // 여기 붙잡아 두고, 한 번 성공한 뒤로는 절대 구매 버튼을 다시 켜지 않는다.
   const [confirming, setConfirming] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+  // 크레딧 결제에는 스토어 결제 시트 같은 확인 단계가 없다. 탭 한 번에
+  // 환급되지 않는 크레딧이 빠져나가므로 확인을 한 번 받는다.
+  const [creditConfirm, setCreditConfirm] = useState<ChallengeProductOut | null>(null);
+  const navigation = useNavigation();
 
   const balance = me.data?.credit_balance ?? 0;
   const userId = me.data?.id;
@@ -46,6 +50,19 @@ export default function Select() {
       }
     })();
   }, [userId]);
+
+  // 결제는 끝났는데 챌린지가 아직 안 열린 동안 나가면, 돌아와서 다시 사게
+  // 되고 두 번째 결제는 영수증만 남는다. 위 주석이 경고하는 그 일이다.
+  // capture.tsx 와 같은 방식으로 두 출구를 하나의 조건으로 막는다.
+  useEffect(() => {
+    if (!confirming) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => true);
+    return () => sub.remove();
+  }, [confirming]);
+
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !confirming });
+  }, [navigation, confirming]);
 
   // 폴링 중이든, 타임아웃 뒤 수동 새로고침이든 — 챌린지가 나타나는 순간 나간다.
   useEffect(() => {
@@ -80,6 +97,7 @@ export default function Select() {
   }
 
   async function payWithCredit(product: ChallengeProductOut) {
+    setCreditConfirm(null);
     setBusy(product.product_id);
     try {
       await api.post("/challenges", { product_id: product.product_id });
@@ -94,10 +112,43 @@ export default function Select() {
     }
   }
 
+  if (creditConfirm) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
+        <T variant="title">크레딧 {formatWon(creditConfirm.price)}을 씁니다</T>
+        <T variant="body" kind="sub">
+          {creditConfirm.days}일 챌린지를 시작합니다. 크레딧은 현금으로 돌려받을 수 없고,
+          시작한 뒤에는 취소할 수 없어요.
+        </T>
+        <Button
+          label="시작하기"
+          tone="primary"
+          loading={busy !== null}
+          onPress={() => payWithCredit(creditConfirm)}
+        />
+        <Button label="취소" tone="text" onPress={() => setCreditConfirm(null)} />
+      </View>
+    );
+  }
+
   // 결제를 확인하는 중이면 자리표시자로 덮으면 안 된다 — 방금 돈을 낸 사람이
   // 빈 화면을 보게 된다. 그 안내가 상품 목록보다 우선한다.
   if (products.isLoading && !confirming) {
     return <ListSkeleton />;
+  }
+
+  // 돈을 쓰러 들어온 화면이 조용히 비어 있으면 막다른 길이다.
+  if (products.isError && !confirming) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
+        <T variant="title">상품을 불러오지 못했습니다</T>
+        <T variant="body" kind="sub">
+          연결을 확인하고 다시 시도해주세요.
+        </T>
+        <Button label="다시 시도" tone="primary" onPress={() => products.refetch()} />
+        <Button label="닫기" tone="text" onPress={() => router.back()} />
+      </View>
+    );
   }
 
   return (
@@ -155,7 +206,7 @@ export default function Select() {
               label="크레딧으로 참가"
               tone="secondary"
               disabled={busy !== null}
-              onPress={() => payWithCredit(product)}
+              onPress={() => setCreditConfirm(product)}
             />
           )}
         </Card>

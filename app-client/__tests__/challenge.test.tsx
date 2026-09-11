@@ -4,8 +4,10 @@ import { router } from "expo-router";
 
 import Select from "../app/challenge/select";
 
+const mockSetOptions = jest.fn();
 jest.mock("expo-router", () => ({
   router: { back: jest.fn() },
+  useNavigation: () => ({ setOptions: mockSetOptions }),
 }));
 
 const mockBuyProduct = jest.fn();
@@ -49,6 +51,7 @@ afterEach(() => {
   jest.restoreAllMocks();
   mockBuyProduct.mockReset();
   mockInitPurchases.mockReset();
+  mockSetOptions.mockReset();
 });
 
 describe("챌린지 선택", () => {
@@ -77,6 +80,45 @@ describe("챌린지 선택", () => {
     mockApi();
     await wrap();
     await waitFor(() => expect(screen.getAllByText("크레딧으로 참가").length).toBeGreaterThan(0));
+  });
+
+  it("크레딧 참가는 확인을 한 번 받는다", async () => {
+    // 스토어 결제는 결제 시트가 확인 단계 역할을 하지만 크레딧에는 그게 없다.
+    // 환급되지 않는 자산이 탭 한 번에 빠져나가면 안 된다.
+    mockApi();
+    await wrap();
+    await waitFor(() => expect(screen.getAllByText("크레딧으로 참가").length).toBeGreaterThan(0));
+
+    await fireEvent.press(screen.getAllByText("크레딧으로 참가")[0]);
+
+    expect(screen.getByText(/크레딧 7,000원을 씁니다/)).toBeTruthy();
+    const posted = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+    );
+    expect(posted).toHaveLength(0);
+  });
+
+  it("크레딧 참가를 취소하면 아무것도 쓰지 않는다", async () => {
+    mockApi();
+    await wrap();
+    await waitFor(() => expect(screen.getAllByText("크레딧으로 참가").length).toBeGreaterThan(0));
+
+    await fireEvent.press(screen.getAllByText("크레딧으로 참가")[0]);
+    await fireEvent.press(screen.getByText("취소"));
+
+    await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
+    const posted = (global.fetch as jest.Mock).mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+    );
+    expect(posted).toHaveLength(0);
+  });
+
+  it("상품을 못 불러오면 빈 화면 대신 재시도를 준다", async () => {
+    // 돈을 쓰러 들어온 화면이 조용히 비어 있으면 막다른 길이다.
+    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    await wrap();
+    await waitFor(() => expect(screen.getByText("상품을 불러오지 못했습니다")).toBeTruthy());
+    expect(screen.getByText("다시 시도")).toBeTruthy();
   });
 
   it("크레딧이 모자라면 결제로만 참가한다", async () => {
@@ -119,6 +161,10 @@ describe("챌린지 선택", () => {
       await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
       expect(mockBuyProduct).toHaveBeenCalledTimes(1);
       expect(router.back).not.toHaveBeenCalled();
+
+      // 버튼만 막는 걸로는 부족하다. 스와이프로 나가면 돌아와서 다시 사게 되고
+      // 두 번째 결제는 영수증만 남는다.
+      expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: false });
     });
 
     it("폴링 중 웹훅이 도착해 챌린지가 나타나면 화면을 나간다", async () => {

@@ -9,10 +9,12 @@ import { GOAL_MAX_MINUTES, GOAL_MIN_MINUTES } from "../../src/config";
 import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
 import { T } from "../../src/design/Text";
+import { Toast, useToast } from "../../src/design/Toast";
 import { color, radius, space, type } from "../../src/design/tokens";
 import { registerPushToken } from "../../src/notifications/register";
 
 export default function Settings() {
+  const toast = useToast();
   const me = useMe();
   const setGoal = useSetGoal();
   const { signOut } = useAuth();
@@ -32,6 +34,7 @@ export default function Settings() {
       return;
     }
     setGoal.mutate(value, {
+      onSuccess: () => toast.show("목표를 저장했어요"),
       onError: (error) => {
         Alert.alert(
           "목표 저장 실패",
@@ -47,6 +50,7 @@ export default function Settings() {
   const pending = me.data?.pending_goal_minutes;
 
   return (
+    <>
     <ScrollView
       contentContainerStyle={{ padding: space.lg, paddingTop: space.huge, gap: space.xl }}
     >
@@ -68,7 +72,12 @@ export default function Settings() {
             letterSpacing: type.body.letterSpacing,
           }}
         />
-        <Button label="목표 저장" tone="primary" onPress={save} />
+        <Button
+          label="목표 저장"
+          tone="primary"
+          loading={setGoal.isPending}
+          onPress={save}
+        />
         {pending != null && (
           // 서버가 목표 변경을 다음 04:00 정산 이후에만 반영한다. 밤에 목표를
           // 낮춰 페이백을 타는 것을 막기 위한 규칙이라, 화면이 이유를 말해줘야
@@ -114,5 +123,7 @@ export default function Settings() {
         }}
       />
     </ScrollView>
+    <Toast message={toast.message} onHide={toast.hide} />
+    </>
   );
 }

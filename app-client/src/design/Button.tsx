@@ -2,7 +2,7 @@ import { ActivityIndicator, type PressableProps } from "react-native";
 
 import { T, type Kind } from "./Text";
 import { Touchable } from "./Touchable";
-import { color, fonts, radius } from "./tokens";
+import { color, fonts, radius, space } from "./tokens";
 
 type Tone = "primary" | "secondary" | "text";
 
@@ -42,7 +42,10 @@ export function Button({
       style={{
         backgroundColor: BACKGROUND[tone],
         borderRadius: filled ? radius.button : 0,
-        height: filled ? 56 : 44,
+        // height 로 고정하면 시스템 글자 크기를 키운 사람에게 라벨 위아래가 잘린다.
+        minHeight: filled ? 56 : 44,
+        paddingHorizontal: filled ? 0 : space.sm,
+        paddingVertical: space.sm,
         width: filled ? "100%" : undefined,
         alignItems: "center",
         justifyContent: "center",
