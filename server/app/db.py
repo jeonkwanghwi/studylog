@@ -9,7 +9,10 @@ from app.config import settings
 # 필요해진다. 미리 표준 규칙을 박아 둔다.
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
-    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    # column_0_N_name: 제약에 걸린 모든 컬럼을 이름에 넣는다. 첫 컬럼만 쓰면
+    # (provider, provider_sub) 유니크가 uq_users_provider 가 되어, provider
+    # 하나가 유니크인 것처럼 읽힌다.
+    "uq": "uq_%(table_name)s_%(column_0_N_name)s",
     "ck": "ck_%(table_name)s_%(constraint_name)s",
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
