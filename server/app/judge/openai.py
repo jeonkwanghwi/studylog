@@ -48,7 +48,9 @@ class OpenAIJudge:
 
     def __init__(self, model: str, api_key: str) -> None:
         self.model = model
-        self._client = AsyncOpenAI(api_key=api_key)
+        # SDK 자체 재시도를 끈다 — judge_photo 의 재시도 계층과 겹치면 한 번 판정에
+        # 최대 9번 호출이 나가고, judge_timeout_seconds 예산이 그걸로 소모된다.
+        self._client = AsyncOpenAI(api_key=api_key, max_retries=0)
 
     async def judge(
         self, image: bytes, activity: str, appeal_text: str | None = None

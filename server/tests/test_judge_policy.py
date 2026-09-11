@@ -107,3 +107,13 @@ async def test_exhausted_retries_still_pass_leniently(monkeypatch, caplog):
     assert provider.calls == 3        # settings.judge_retry_attempts 기본값
     assert result.decision == "pass" and result.confidence == 0.0
     assert "error" in result.raw
+
+
+def test_sdk_재시도는_꺼져있다():
+    """SDK가 자체 재시도하면 judge_photo 의 재시도와 겹쳐 한 번 판정에 최대
+    9번 호출이 나가고, judge_timeout_seconds 예산이 그걸로 소모된다."""
+    from app.judge.claude import ClaudeJudge
+    from app.judge.openai import OpenAIJudge
+
+    assert OpenAIJudge("k", "gpt-4o-mini")._client.max_retries == 0
+    assert ClaudeJudge("k", "claude-haiku-4-5")._client.max_retries == 0
