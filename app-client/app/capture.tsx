@@ -21,10 +21,11 @@ type Phase =
 const SHUTTER_SIZE = 76;
 
 export default function Capture() {
-  const { kind, sessionId, startedAt } = useLocalSearchParams<{
+  const { kind, sessionId, startedAt, activity } = useLocalSearchParams<{
     kind: ShotKind;
     sessionId?: string;
     startedAt?: string;
+    activity?: string;
   }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [phase, setPhase] = useState<Phase>({ name: "ready" });
@@ -52,7 +53,7 @@ export default function Capture() {
     setPhase({ name: "uploading" });
     try {
       const photo = await cameraRef.current?.takePictureAsync({ quality: 0.8 });
-      const result = await uploadPhoto(kind, photo?.uri ?? "", sessionId);
+      const result = await uploadPhoto(kind, photo?.uri ?? "", { sessionId, activity });
       await invalidate();
       setPhase({ name: "judged", result });
     } catch (error) {

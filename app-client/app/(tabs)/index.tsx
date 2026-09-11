@@ -141,7 +141,7 @@ export default function Home() {
         <Button
           label="공부 시작"
           tone="primary"
-          onPress={() => router.push({ pathname: "/capture", params: { kind: "start" } })}
+          onPress={() => router.push("/declare")}
         />
       )}
     </ScrollView>

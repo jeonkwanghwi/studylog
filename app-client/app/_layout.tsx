@@ -49,6 +49,7 @@ export default function RootLayout() {
             name="capture"
             options={{ presentation: "modal", gestureEnabled: false }}
           />
+          <Stack.Screen name="declare" options={{ presentation: "modal" }} />
           <Stack.Screen name="appeal/[photoId]" options={{ presentation: "modal" }} />
           <Stack.Screen name="restore/[recordId]" options={{ presentation: "modal" }} />
           <Stack.Screen name="challenge/select" />

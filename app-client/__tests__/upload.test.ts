@@ -10,14 +10,14 @@ describe("사진 업로드", () => {
   afterEach(() => jest.restoreAllMocks());
 
   it("시작 샷은 /sessions/start 로 간다", async () => {
-    await uploadPhoto("start", "file:///tmp/a.jpg");
+    await uploadPhoto("start", "file:///tmp/a.jpg", { activity: "공부" });
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
       "http://127.0.0.1:8000/sessions/start"
     );
   });
 
   it("종료 샷은 세션 id 를 경로에 넣는다", async () => {
-    await uploadPhoto("end", "file:///tmp/a.jpg", "s1");
+    await uploadPhoto("end", "file:///tmp/a.jpg", { sessionId: "s1" });
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
       "http://127.0.0.1:8000/sessions/s1/end"
     );
@@ -30,10 +30,18 @@ describe("사진 업로드", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("image 라는 이름으로 붙인다", async () => {
-    await uploadPhoto("start", "file:///tmp/a.jpg");
+  it("image 와 선언한 활동을 함께 붙인다", async () => {
+    await uploadPhoto("start", "file:///tmp/a.jpg", { activity: "  러닝머신 30분  " });
     const init = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
     const form = init.body as FormData;
     expect(form.get("image")).toBeTruthy();
+    expect(form.get("activity")).toBe("러닝머신 30분");
+  });
+
+  it("시작 샷인데 선언이 비어 있으면 부르기 전에 막는다", async () => {
+    await expect(
+      uploadPhoto("start", "file:///tmp/a.jpg", { activity: "   " })
+    ).rejects.toThrow(/선언/);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
