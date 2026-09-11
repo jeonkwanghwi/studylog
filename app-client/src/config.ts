@@ -8,3 +8,7 @@ export function apiBaseUrl(): string {
   }
   return url.replace(/\/$/, "");
 }
+
+/** 서버가 허용하는 하루 목표 범위(분). 벗어나면 PATCH /users/me/goal 이 422를 낸다. */
+export const GOAL_MIN_MINUTES = 1;
+export const GOAL_MAX_MINUTES = 1440;

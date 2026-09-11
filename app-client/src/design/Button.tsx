@@ -1,6 +1,6 @@
 import { Pressable, type PressableProps } from "react-native";
 
-import { T } from "./Text";
+import { T, type Kind } from "./Text";
 import { color, fonts, radius } from "./tokens";
 
 type Tone = "primary" | "secondary" | "text";
@@ -20,9 +20,10 @@ const LABEL_KIND: Record<Tone, "text" | "sub"> = {
 export function Button({
   label,
   tone = "primary",
+  kind,
   disabled,
   ...rest
-}: PressableProps & { label: string; tone?: Tone }) {
+}: PressableProps & { label: string; tone?: Tone; kind?: Kind }) {
   const filled = tone === "primary" || tone === "secondary";
   return (
     <Pressable
@@ -41,7 +42,7 @@ export function Button({
     >
       <T
         variant="section"
-        kind={LABEL_KIND[tone]}
+        kind={kind ?? LABEL_KIND[tone]}
         style={{
           textAlign: "center",
           color: tone === "primary" ? "#FFFFFF" : undefined,

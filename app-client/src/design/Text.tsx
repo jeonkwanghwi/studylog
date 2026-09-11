@@ -3,7 +3,7 @@ import { Text as RNText, type TextProps } from "react-native";
 import { color, type } from "./tokens";
 
 type Variant = keyof typeof type;
-type Kind = "text" | "sub" | "muted" | "accent" | "negative";
+export type Kind = "text" | "sub" | "muted" | "accent" | "negative";
 
 const TONE: Record<Kind, string> = {
   text: color.text,
