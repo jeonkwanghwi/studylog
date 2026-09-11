@@ -1,17 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { useLocalSearchParams } from "expo-router";
 
 import Capture from "../app/capture";
 
-let mockStartedAt = "2026-09-10T01:00:00Z";
-
 jest.mock("expo-router", () => ({
   router: { back: jest.fn(), replace: jest.fn(), push: jest.fn() },
-  useLocalSearchParams: () => ({
-    kind: "end",
-    sessionId: "s1",
-    startedAt: mockStartedAt,
-  }),
+  useLocalSearchParams: jest.fn(),
 }));
 
 jest.mock("expo-camera", () => ({
@@ -26,12 +21,23 @@ const wrap = () =>
     </QueryClientProvider>
   );
 
+/** 시작 샷 경로. useLocalSearchParams 모킹을 kind="start" 로 바꿔 렌더한다. */
+const wrapStart = () => {
+  jest.mocked(useLocalSearchParams).mockReturnValue({ kind: "start" });
+  return wrap();
+};
+
 beforeEach(() => {
-  mockStartedAt = "2026-09-10T01:00:00Z";
+  jest.mocked(useLocalSearchParams).mockReturnValue({
+    kind: "end",
+    sessionId: "s1",
+    startedAt: "2026-09-10T01:00:00Z",
+  });
 });
 
 afterEach(() => {
   jest.restoreAllMocks();
+  jest.useRealTimers();
 });
 
 describe("종료 샷 실패", () => {
@@ -47,7 +53,11 @@ describe("종료 샷 실패", () => {
 
   it("회수까지 남은 시간을 경고한다", async () => {
     // 4시간(240분) 중 215분이 지난 시점 — 25분 남아야 한다.
-    mockStartedAt = new Date(Date.now() - 215 * 60_000).toISOString();
+    jest.mocked(useLocalSearchParams).mockReturnValue({
+      kind: "end",
+      sessionId: "s1",
+      startedAt: new Date(Date.now() - 215 * 60_000).toISOString(),
+    });
     jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
     await wrap();
     fireEvent.press(screen.getByText("촬영"));
@@ -57,9 +67,16 @@ describe("종료 샷 실패", () => {
     );
   });
 
-  it("시작 샷 실패는 그냥 닫아도 된다", async () => {
-    // 이 케이스는 Task 7 테스트가 덮는다. 여기서는 종료 샷만 다룬다.
-    expect(true).toBe(true);
+  it("시작 샷 실패는 닫을 수 있다", async () => {
+    // 같은 error 분기가 kind 에 따라 갈린다. 시작 샷에서 닫기가 살아있는지
+    // 여기서 함께 확인해야, 나중에 누가 분기를 합쳐도 테스트가 잡는다.
+    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    await wrapStart();
+    fireEvent.press(screen.getByText("촬영"));
+
+    await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
+    expect(screen.getByText("닫기")).toBeTruthy();
+    expect(screen.queryByText(/오늘 기록이 사라집니다/)).toBeNull();
   });
 
   it("재시도해서 성공하면 종료 결과를 보여준다", async () => {
