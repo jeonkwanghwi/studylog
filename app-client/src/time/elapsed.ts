@@ -27,3 +27,12 @@ export function remainingBeforeForfeit(
 ): number {
   return Math.max(0, SESSION_MAX_MINUTES - elapsedMinutes(startedAtIso, now));
 }
+
+export const RESTORE_WINDOW_HOURS = 24;
+
+/** 정산 후 24시간 안에만 복구할 수 있다. */
+export function canRestore(settledAtIso: string, now: Date): boolean {
+  const deadline =
+    new Date(settledAtIso).getTime() + RESTORE_WINDOW_HOURS * 3_600_000;
+  return now.getTime() <= deadline;
+}

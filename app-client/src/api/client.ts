@@ -1,11 +1,18 @@
 import { apiBaseUrl } from "../config";
 
-export type ErrorKind = "auth" | "payment" | "forbidden" | "conflict" | "other";
+export type ErrorKind =
+  | "auth"
+  | "payment"
+  | "forbidden"
+  | "notFound"
+  | "conflict"
+  | "other";
 
 const KIND_BY_STATUS: Record<number, ErrorKind> = {
   401: "auth",
   402: "payment",
   403: "forbidden",
+  404: "notFound",
   409: "conflict",
 };
 
