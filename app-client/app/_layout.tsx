@@ -47,6 +47,7 @@ export default function RootLayout() {
         <Stack.Screen name="appeal/[photoId]" options={{ presentation: "modal" }} />
         <Stack.Screen name="restore/[recordId]" options={{ presentation: "modal" }} />
         <Stack.Screen name="challenge/select" />
+        <Stack.Screen name="groups/index" />
       </Stack>
     </QueryClientProvider>
   );
