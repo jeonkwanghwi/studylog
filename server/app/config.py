@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     judge_fail_confidence: float = 0.7
     judge_timeout_seconds: float = 10.0
     anthropic_api_key: str = ""
+    openai_api_key: str = ""
 
     # 세션
     session_max_minutes: int = 240
