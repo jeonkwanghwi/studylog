@@ -1,16 +1,22 @@
 {
   "expo": {
-    "name": "app-client",
-    "slug": "app-client",
+    "name": "스터디로그",
+    "slug": "studylog",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "bundleIdentifier": "com.studylog.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "공부 인증 사진을 찍습니다."
+      }
     },
     "android": {
+      "package": "com.studylog.app",
+      "permissions": ["CAMERA"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

@@ -4,6 +4,7 @@ import { Stack } from "expo-router";
 
 import { ApiError } from "../src/api/client";
 import { clearToken } from "../src/auth/storage";
+import { ErrorBoundary } from "../src/components/ErrorBoundary";
 import { color, fonts } from "../src/design/tokens";
 
 const queryClient = new QueryClient({
@@ -36,19 +37,21 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: color.bg },
-        }}
-      >
-        <Stack.Screen name="capture" options={{ presentation: "modal" }} />
-        <Stack.Screen name="appeal/[photoId]" options={{ presentation: "modal" }} />
-        <Stack.Screen name="restore/[recordId]" options={{ presentation: "modal" }} />
-        <Stack.Screen name="challenge/select" />
-        <Stack.Screen name="groups/index" />
-      </Stack>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: color.bg },
+          }}
+        >
+          <Stack.Screen name="capture" options={{ presentation: "modal" }} />
+          <Stack.Screen name="appeal/[photoId]" options={{ presentation: "modal" }} />
+          <Stack.Screen name="restore/[recordId]" options={{ presentation: "modal" }} />
+          <Stack.Screen name="challenge/select" />
+          <Stack.Screen name="groups/index" />
+        </Stack>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
