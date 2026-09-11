@@ -69,3 +69,29 @@ def test_unknown_provider_is_rejected_by_the_schema(client):
         "provider": "naver", "id_token": "t", "nickname": "광휘",
     })
     assert r.status_code == 422
+
+
+def test_google_accepts_every_configured_platform_client_id(monkeypatch):
+    """플랫폼마다 client id 가 다르고 id_token 의 aud 는 로그인을 시작한 그것이다.
+    하나만 허용하면 한쪽 빌드가 조용히 깨진다."""
+    from app.auth import verifiers
+
+    monkeypatch.setattr(verifiers.settings, "google_client_id", "web.apps.googleusercontent.com")
+    monkeypatch.setattr(verifiers.settings, "google_ios_client_id", "ios.apps.googleusercontent.com")
+    monkeypatch.setattr(verifiers.settings, "google_android_client_id", "aos.apps.googleusercontent.com")
+
+    assert verifiers._AUDIENCE["google"]() == [
+        "web.apps.googleusercontent.com",
+        "ios.apps.googleusercontent.com",
+        "aos.apps.googleusercontent.com",
+    ]
+
+
+def test_google_audience_skips_unset_platforms(monkeypatch):
+    from app.auth import verifiers
+
+    monkeypatch.setattr(verifiers.settings, "google_client_id", "web.apps.googleusercontent.com")
+    monkeypatch.setattr(verifiers.settings, "google_ios_client_id", "")
+    monkeypatch.setattr(verifiers.settings, "google_android_client_id", "")
+
+    assert verifiers._AUDIENCE["google"]() == ["web.apps.googleusercontent.com"]
