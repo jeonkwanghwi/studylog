@@ -33,6 +33,12 @@
 1. **HTTPS가 없다.** 도메인이 없어서 80 포트 평문으로 떠 있다. JWT가 평문으로
    오간다는 뜻이므로 **실유저를 받기 전에 반드시** 도메인을 붙이고 certbot으로
    TLS를 건다. RevenueCat 웹훅도 HTTPS를 요구한다.
+
+   그 사이 앱이 이 서버에 붙으려면 플랫폼의 평문 차단을 열어줘야 한다.
+   `app-client/app.json` 에 **이 IP 하나만** 예외로 넣어뒀다
+   (`ios.infoPlist.NSAppTransportSecurity`, `android.usesCleartextTraffic`).
+   **TLS 를 붙이는 즉시 그 두 항목을 지울 것** — 남겨두면 실서비스가 평문을
+   허용한 채로 나간다. IP 가 바뀌면 예외의 IP 도 같이 고쳐야 한다.
 2. `.env`의 `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`가 비어 있다 — 판정이
    관대 폴백으로 전부 통과한다. 판정 모델을 정하고 키를 넣어야 한다.
 3. 소셜 로그인 client id, RevenueCat 키가 비어 있다.
