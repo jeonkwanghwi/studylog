@@ -16,7 +16,9 @@
     },
     "android": {
       "package": "com.studylog.app",
-      "permissions": ["CAMERA"],
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -30,7 +32,12 @@
       "expo-router",
       "expo-status-bar",
       "expo-secure-store",
-      "expo-camera",
+      [
+        "expo-camera",
+        {
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-font",
       "expo-web-browser",
       "expo-apple-authentication"
@@ -38,6 +45,13 @@
     "platforms": [
       "ios",
       "android"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "20931b67-3bf8-4087-b9d8-342e86dceba3"
+      }
+    },
+    "owner": "kwanghwi"
   }
 }

@@ -41,14 +41,19 @@ Kakao Developers 의 **REST API 키**다. 앱에서는 네이티브 SDK 없이
 
 필요한 것: Kakao Developers 앱 등록 → REST API 키, 그리고 리다이렉트 URI 등록.
 
-## 2.6 EAS 프로젝트 — 푸시가 이것 없이는 동작 안 함
+## 2.6 EAS 프로젝트 — 완료
 
-`expo-notifications` 의 `getExpoPushTokenAsync()` 는 `app.json` 에 EAS `projectId`
-가 있어야 토큰을 준다. 지금은 없어서 `registerPushToken()` 이 항상 `false` 를
-돌려준다 (던지지는 않으므로 앱은 정상 동작).
+`eas init` 으로 `@kwanghwi/studylog` 생성, `projectId` 를 app.json 에 넣었다.
+이것 없이는 `getExpoPushTokenAsync()` 가 토큰을 못 만들어서 푸시가 통째로
+죽어 있었다 — 인증 거절 알림이 이 경로로 나간다.
 
-즉 **알림 5종이 서버에는 다 구현돼 있는데 기기로 갈 수단이 없는 상태**다.
-`eas init` 한 번이면 되고, Expo 계정만 있으면 무료다.
+프로젝트: https://expo.dev/accounts/kwanghwi/projects/studylog
+
+> 부수적으로 잡은 것: `eas init` 이 안드로이드에 마이크 권한(`RECORD_AUDIO`)을
+> 끌고 들어왔다. 범인은 `expo-image-picker` 였는데 **코드 어디에서도 쓰지
+> 않았다** — 앱은 카메라로만 찍는다(갤러리에서 고르게 하면 인증이 뚫린다).
+> 의존성을 제거해서 권한이 카메라 하나로 정리됐다. 공부 앱이 마이크를
+> 요구하면 심사에서 설명을 요구받고 유저도 의심한다.
 
 ## 2.7 소셜 로그인 버튼 — 규정 적용함, 심볼 에셋만 남음
 
