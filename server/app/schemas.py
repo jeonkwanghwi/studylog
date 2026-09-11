@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class SocialLoginIn(BaseModel):
-    provider: str = Field(pattern="^(apple|google)$")
+    provider: str = Field(pattern="^(apple|google|kakao)$")
     id_token: str
     nickname: str = Field(min_length=1, max_length=32)
 

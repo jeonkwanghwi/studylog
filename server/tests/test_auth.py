@@ -53,3 +53,19 @@ def test_me_returns_the_logged_in_user(client):
     assert r.status_code == 200
     assert r.json()["nickname"] == "휘"
     assert r.json()["credit_balance"] == 0
+
+
+def test_kakao_is_an_accepted_provider(client, db):
+    """카카오는 한국에서 사실상 표준 로그인이다. 애플·구글과 같은 OIDC 경로를 탄다."""
+    r = client.post("/auth/social", json={
+        "provider": "kakao", "id_token": "tok-kakao", "nickname": "광휘",
+    })
+    assert r.status_code == 200
+    assert db.query(User).filter_by(provider="kakao").count() == 1
+
+
+def test_unknown_provider_is_rejected_by_the_schema(client):
+    r = client.post("/auth/social", json={
+        "provider": "naver", "id_token": "t", "nickname": "광휘",
+    })
+    assert r.status_code == 422

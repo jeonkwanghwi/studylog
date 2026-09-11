@@ -3,12 +3,16 @@ from jwt import PyJWKClient
 
 from app.config import settings
 
+# 세 곳 다 OIDC라 검증 방식이 같다 — JWKS로 공개키를 받아 서명·발급자·audience를
+# 확인한다. 카카오는 한국에서 사실상 표준 로그인이라 빠질 수 없다.
 _JWKS = {
     "apple": ("https://appleid.apple.com/auth/keys", "https://appleid.apple.com"),
     "google": ("https://www.googleapis.com/oauth2/v3/certs", "https://accounts.google.com"),
+    "kakao": ("https://kauth.kakao.com/.well-known/jwks.json", "https://kauth.kakao.com"),
 }
 _AUDIENCE = {"apple": lambda: settings.apple_bundle_id,
-             "google": lambda: settings.google_client_id}
+             "google": lambda: settings.google_client_id,
+             "kakao": lambda: settings.kakao_rest_api_key}
 _clients: dict[str, PyJWKClient] = {}
 
 

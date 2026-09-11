@@ -12,6 +12,7 @@
 | Apple Developer Program ($99/년) | ? | 앱 등록, IAP 상품 생성, 실기기 테스트 |
 | Google Play Console ($25 1회) | ? | 동일 |
 | RevenueCat 계정 | ? | 결제 검증. 월 매출 $2,500까지 무료 |
+| **Kakao Developers 앱** | ? | **카카오 로그인. REST API 키가 OIDC audience 로 쓰인다** |
 | Anthropic API 키 | ? | **AI 판정. 지금 없어서 모든 사진이 관대 폴백으로 통과된다** |
 
 지금 로컬 서버는 키가 없어서 판정이 사실상 꺼져 있다. 실제 판정 품질을 한 번도
@@ -28,6 +29,17 @@
 
 특히 **21,000 / 42,000** 이 한국 티어에 있는지 확인해달라. 없으면 하루 3,000원을
 2,900원 같은 값으로 내려서 맞춘다.
+
+## 2.5 소셜 로그인 — 카카오 추가함
+
+애플·카카오만 하려 했다고 해서 확인해보니, **구글은 이미 되어 있었다** (애플과 같은
+OIDC라 코드가 12줄 차이). 빼지 않고 셋 다 둔다.
+
+**카카오를 서버에 추가했다.** `kauth.kakao.com` JWKS 로 검증하고, audience 는
+Kakao Developers 의 **REST API 키**다. 앱에서는 네이티브 SDK 없이
+`expo-auth-session` 브라우저 플로우로 받을 계획이라 Expo Go 에서 바로 테스트된다.
+
+필요한 것: Kakao Developers 앱 등록 → REST API 키, 그리고 리다이렉트 URI 등록.
 
 ## 3. 번들 ID와 앱 이름
 

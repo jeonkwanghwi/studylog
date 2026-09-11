@@ -2176,6 +2176,12 @@ const wrap = () =>
     </QueryClientProvider>
   );
 
+/** 시작 샷 경로. useLocalSearchParams 모킹을 kind="start" 로 바꿔 렌더한다. */
+const wrapStart = () => {
+  jest.mocked(useLocalSearchParams).mockReturnValue({ kind: "start" });
+  return wrap();
+};
+
 afterEach(() => {
   jest.restoreAllMocks();
   jest.useRealTimers();
@@ -2203,9 +2209,16 @@ describe("종료 샷 실패", () => {
     );
   });
 
-  it("시작 샷 실패는 그냥 닫아도 된다", async () => {
-    // 이 케이스는 Task 7 테스트가 덮는다. 여기서는 종료 샷만 다룬다.
-    expect(true).toBe(true);
+  it("시작 샷 실패는 닫을 수 있다", async () => {
+    // 같은 error 분기가 kind 에 따라 갈린다. 시작 샷에서 닫기가 살아있는지
+    // 여기서 함께 확인해야, 나중에 누가 분기를 합쳐도 테스트가 잡는다.
+    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    wrapStart();
+    fireEvent.press(screen.getByText("촬영"));
+
+    await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
+    expect(screen.getByText("닫기")).toBeTruthy();
+    expect(screen.queryByText(/오늘 기록이 사라집니다/)).toBeNull();
   });
 
   it("재시도해서 성공하면 종료 결과를 보여준다", async () => {
@@ -3889,11 +3902,21 @@ git commit -m "feat(app): 설정·온보딩·푸시 등록"
 
 ---
 
-## Task 15: Apple / Google 로그인 실연동
+## Task 15: Apple / Kakao / Google 로그인 실연동
 
 Task 5의 로그인은 `EXPO_PUBLIC_DEV_ID_TOKEN` 을 그대로 서버에 보내는 개발용
-우회다. 서버는 그 토큰을 Apple·Google JWKS로 **실제로 검증**하므로, 진짜
+우회다. 서버는 그 토큰을 Apple·Kakao·Google JWKS로 **실제로 검증**하므로, 진짜
 id_token 을 받아오지 않으면 실기기에서 로그인이 되지 않는다.
+
+**카카오가 한국에서 가장 중요한 경로다.** 애플은 iOS에서 타사 로그인을 제공하면
+애플이 의무화하므로 필수이고, 구글은 서버가 이미 지원하니 공짜로 딸려온다.
+셋 다 OIDC라 서버 쪽은 검증기 표에 한 줄씩일 뿐이고, 다른 건 앱에서 id_token 을
+어떻게 받아오느냐다.
+
+카카오는 **네이티브 SDK 없이 `expo-auth-session` 의 브라우저 플로우**로 받는다.
+Expo Go 에서 그대로 테스트되고 config plugin 이 필요 없다. 권한 요청 시
+`scope` 에 `openid` 를 반드시 넣어야 `id_token` 이 돌아온다 — 빠뜨리면
+access token 만 오고 서버가 검증할 것이 없다.
 
 **Files:**
 - Create: `app-client/src/auth/social.ts`
