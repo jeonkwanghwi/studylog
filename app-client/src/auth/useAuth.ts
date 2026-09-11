@@ -18,7 +18,7 @@ export function useAuth() {
   });
 
   const signIn = useCallback(
-    async (provider: "apple" | "google", idToken: string, nickname: string) => {
+    async (provider: "apple" | "google" | "kakao", idToken: string, nickname: string) => {
       const out = await api.post<LoginOut>("/auth/social", {
         provider,
         id_token: idToken,
