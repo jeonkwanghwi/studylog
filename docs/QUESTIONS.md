@@ -41,6 +41,15 @@ Kakao Developers 의 **REST API 키**다. 앱에서는 네이티브 SDK 없이
 
 필요한 것: Kakao Developers 앱 등록 → REST API 키, 그리고 리다이렉트 URI 등록.
 
+## 2.6 EAS 프로젝트 — 푸시가 이것 없이는 동작 안 함
+
+`expo-notifications` 의 `getExpoPushTokenAsync()` 는 `app.json` 에 EAS `projectId`
+가 있어야 토큰을 준다. 지금은 없어서 `registerPushToken()` 이 항상 `false` 를
+돌려준다 (던지지는 않으므로 앱은 정상 동작).
+
+즉 **알림 5종이 서버에는 다 구현돼 있는데 기기로 갈 수단이 없는 상태**다.
+`eas init` 한 번이면 되고, Expo 계정만 있으면 무료다.
+
 ## 3. 번들 ID와 앱 이름
 
 - 현재 `com.studylog.app` 으로 잡아뒀다. 이미 쓰고 있거나 다른 걸 원하면 알려달라
