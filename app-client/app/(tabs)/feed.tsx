@@ -1,13 +1,15 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { RefreshControl, ScrollView, View } from "react-native";
 
 import { useFeed, useGroups } from "../../src/api/hooks";
 import type { FeedItemOut } from "../../src/api/types";
 import { PhotoGrid } from "../../src/components/PhotoGrid";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
+import { ListSkeleton } from "../../src/design/Skeleton";
 import { T } from "../../src/design/Text";
+import { Touchable } from "../../src/design/Touchable";
 import { color, radius, space } from "../../src/design/tokens";
 import { formatElapsed } from "../../src/time/elapsed";
 
@@ -26,7 +28,11 @@ export default function Feed() {
   const groupId = selected ?? list[0]?.id;
   const feed = useFeed(groupId);
 
-  if (!groups.isLoading && list.length === 0) {
+  if (groups.isLoading) {
+    return <ListSkeleton rows={2} />;
+  }
+
+  if (list.length === 0) {
     return (
       <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
         <T variant="body" kind="sub">
@@ -41,7 +47,11 @@ export default function Feed() {
     <ScrollView
       contentContainerStyle={{ padding: space.xl, paddingTop: space.huge, gap: space.base }}
       refreshControl={
-        <RefreshControl refreshing={feed.isFetching} onRefresh={() => feed.refetch()} />
+        <RefreshControl
+          refreshing={feed.isFetching}
+          onRefresh={() => feed.refetch()}
+          tintColor={color.textMuted}
+        />
       }
     >
       <T variant="title">피드</T>
@@ -55,8 +65,10 @@ export default function Feed() {
           {list.map((group) => {
             const active = group.id === groupId;
             return (
-              <Pressable
+              <Touchable
                 key={group.id}
+                accessibilityRole="button"
+                feedback={false}
                 onPress={() => setSelected(group.id)}
                 style={{
                   paddingHorizontal: space.base,
@@ -68,7 +80,7 @@ export default function Feed() {
                 <T variant="body" kind={active ? "accent" : "sub"}>
                   {group.name}
                 </T>
-              </Pressable>
+              </Touchable>
             );
           })}
         </ScrollView>

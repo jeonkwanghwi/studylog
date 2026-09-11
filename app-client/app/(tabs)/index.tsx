@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, View } from "react-native";
+import { RefreshControl, ScrollView, View } from "react-native";
 
 import { useCurrentChallenge, useCurrentSession, useMe, useRecords } from "../../src/api/hooks";
 import type { ChallengeOut, DailyRecordOut } from "../../src/api/types";
@@ -8,6 +8,7 @@ import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { DayGrid, isoDateAtOffset, type Mark } from "../../src/design/DayGrid";
+import { ScreenSkeleton } from "../../src/design/Skeleton";
 import { T } from "../../src/design/Text";
 import { color, space } from "../../src/design/tokens";
 import { formatWon } from "../../src/money/format";
@@ -60,11 +61,7 @@ export default function Home() {
   // 새로 그리지 않으면, 열린 세션이 있는데도 잠깐 "공부 시작"이 보여 탭하는
   // 순간 사진 한 장과 유료 AI 판정 호출이 409로 날아간다.
   if (session.isLoading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={color.accent} />
-      </View>
-    );
+    return <ScreenSkeleton />;
   }
 
   // open 만 진행 중인 세션이다. abandoned·closed 는 시작 전 상태로 취급한다.
@@ -78,7 +75,21 @@ export default function Home() {
   const remaining = open ? remainingBeforeForfeit(open.started_at, now) : 0;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: space.huge, gap: space.xl }}>
+    <ScrollView
+      contentContainerStyle={{ padding: space.lg, paddingTop: space.huge, gap: space.xl }}
+      refreshControl={
+        <RefreshControl
+          refreshing={records.isFetching && !records.isLoading}
+          onRefresh={() => {
+            session.refetch();
+            challenge.refetch();
+            records.refetch();
+            me.refetch();
+          }}
+          tintColor={color.textMuted}
+        />
+      }
+    >
       <T variant="body" kind="sub">
         {me.data?.nickname ?? ""}님 · {me.data?.streak_count ?? 0}일째 이어가는 중
       </T>
@@ -88,7 +99,7 @@ export default function Home() {
           <T variant="caption" kind="muted">
             아직 못 받은 돈
           </T>
-          <Amount value={remainingAtStake} size="hero" />
+          <Amount value={remainingAtStake} size="hero" roll />
           <T variant="caption" kind="muted">
             {activeChallenge.total_days}일 챌린지 · {formatWon(earned)} 확보
           </T>

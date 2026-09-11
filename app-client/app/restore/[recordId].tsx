@@ -5,7 +5,9 @@ import { ActivityIndicator, View } from "react-native";
 import { ApiError, api } from "../../src/api/client";
 import { useInvalidateAll } from "../../src/api/hooks";
 import type { DailyRecordOut } from "../../src/api/types";
+import { Appear } from "../../src/design/Appear";
 import { Button } from "../../src/design/Button";
+import { haptic } from "../../src/design/motion";
 import { T } from "../../src/design/Text";
 import { color, space } from "../../src/design/tokens";
 import { RESTORE_COST, formatWon } from "../../src/money/format";
@@ -30,37 +32,39 @@ export default function Restore() {
     try {
       const record = await api.post<DailyRecordOut>(`/records/${recordId}/restore`);
       await invalidate();
+      haptic.success();
       setPhase({ name: "done", record });
     } catch (error) {
       const detail =
         error instanceof ApiError && error.kind !== "other"
           ? error.detail
           : GENERIC_FAILURE;
+      haptic.warning();
       setPhase({ name: "failed", detail });
     }
   }
 
   if (phase.name === "done") {
     return (
-      <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
+      <Appear style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
         <T variant="title">복구됐습니다</T>
         <T variant="body" kind="sub">
           연속 기록이 {phase.record.streak_snapshot}일로 복원됐습니다.
         </T>
         <Button label="확인" tone="primary" onPress={() => router.back()} />
-      </View>
+      </Appear>
     );
   }
 
   if (phase.name === "failed") {
     return (
-      <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
+      <Appear style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
         <T variant="title">복구하지 못했습니다</T>
         <T variant="body" kind="sub">
           {phase.detail}
         </T>
         <Button label="닫기" tone="text" onPress={() => router.back()} />
-      </View>
+      </Appear>
     );
   }
 

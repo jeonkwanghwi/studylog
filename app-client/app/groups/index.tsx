@@ -1,6 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, TextInput, View } from "react-native";
+import { Alert, ScrollView, TextInput, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, api } from "../../src/api/client";
@@ -9,6 +9,8 @@ import type { GroupOut } from "../../src/api/types";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { T } from "../../src/design/Text";
+import { Toast, useToast } from "../../src/design/Toast";
+import { Touchable } from "../../src/design/Touchable";
 import { color, radius, space, type } from "../../src/design/tokens";
 
 const CODE_LENGTH = 6;
@@ -30,6 +32,7 @@ export default function Groups() {
   const [code, setCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
+  const toast = useToast();
 
   const list = groups.data ?? [];
 
@@ -71,11 +74,14 @@ export default function Groups() {
   async function share(group: GroupOut) {
     // 딥링크가 아니라 코드를 복사한다 — 사람이 채팅방에 그대로 붙여넣는다.
     await Clipboard.setStringAsync(`스터디로그 초대코드: ${group.invite_code}`);
-    Alert.alert("복사됨", "초대코드를 붙여넣어 친구에게 보내세요.");
+    toast.show("초대코드를 복사했어요");
   }
 
   return (
+    <>
     <ScrollView
+      keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
       contentContainerStyle={{ padding: space.xl, paddingTop: space.huge, gap: space.xl }}
     >
       <T variant="title">그룹</T>
@@ -87,7 +93,7 @@ export default function Groups() {
       ) : (
         <View style={{ gap: space.md }}>
           {list.map((group) => (
-            <Pressable key={group.id} onPress={() => share(group)}>
+            <Touchable key={group.id} accessibilityRole="button" onPress={() => share(group)}>
               <Card style={{ gap: space.xs }}>
                 <T variant="section">{group.name}</T>
                 <T variant="body" kind="sub" style={{ letterSpacing: 2 }}>
@@ -97,7 +103,7 @@ export default function Groups() {
                   눌러서 초대코드 복사
                 </T>
               </Card>
-            </Pressable>
+            </Touchable>
           ))}
         </View>
       )}
@@ -128,5 +134,7 @@ export default function Groups() {
         <Button label="참여" tone="primary" disabled={joining} onPress={join} />
       </View>
     </ScrollView>
+    <Toast message={toast.message} onHide={toast.hide} />
+    </>
   );
 }

@@ -8,6 +8,7 @@ import type { ChallengeProductOut } from "../../src/api/types";
 import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
+import { ListSkeleton } from "../../src/design/Skeleton";
 import { T } from "../../src/design/Text";
 import { color, space } from "../../src/design/tokens";
 import { formatWon } from "../../src/money/format";
@@ -93,6 +94,12 @@ export default function Select() {
     }
   }
 
+  // 결제를 확인하는 중이면 자리표시자로 덮으면 안 된다 — 방금 돈을 낸 사람이
+  // 빈 화면을 보게 된다. 그 안내가 상품 목록보다 우선한다.
+  if (products.isLoading && !confirming) {
+    return <ListSkeleton />;
+  }
+
   return (
     <ScrollView
       contentContainerStyle={{ padding: space.lg, paddingTop: space.huge, gap: space.base }}
@@ -138,6 +145,7 @@ export default function Select() {
           <Button
             label="결제하고 시작"
             tone="primary"
+            loading={busy === product.product_id}
             disabled={busy !== null}
             onPress={() => payWithStore(product)}
           />

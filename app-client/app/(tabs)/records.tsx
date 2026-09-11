@@ -1,10 +1,11 @@
 import { router } from "expo-router";
-import { ActivityIndicator, ScrollView, View } from "react-native";
+import { RefreshControl, ScrollView, View } from "react-native";
 
 import { useMe, useRecords } from "../../src/api/hooks";
 import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
+import { ListSkeleton } from "../../src/design/Skeleton";
 import { T } from "../../src/design/Text";
 import { color, space } from "../../src/design/tokens";
 import { RESTORE_COST, formatWon } from "../../src/money/format";
@@ -24,11 +25,7 @@ export default function Records() {
   const now = new Date();
 
   if (records.isLoading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={color.accent} />
-      </View>
-    );
+    return <ListSkeleton />;
   }
 
   const list = records.data ?? [];
@@ -36,6 +33,16 @@ export default function Records() {
   return (
     <ScrollView
       contentContainerStyle={{ padding: space.lg, paddingTop: space.huge, gap: space.md }}
+      refreshControl={
+        <RefreshControl
+          refreshing={records.isFetching && !records.isLoading}
+          onRefresh={() => {
+            records.refetch();
+            me.refetch();
+          }}
+          tintColor={color.textMuted}
+        />
+      }
     >
       <T variant="title">기록</T>
 

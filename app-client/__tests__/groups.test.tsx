@@ -124,6 +124,22 @@ describe("그룹", () => {
     expect(alertSpy).not.toHaveBeenCalledWith("참여 실패", expect.anything());
   });
 
+  it("초대코드 복사는 Alert 대신 토스트로 알린다", async () => {
+    // 되돌릴 것도 없고 놓쳐도 그만인 확인이다. 화면을 막고 확인 탭을 요구하면 안 된다.
+    mockApi();
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    await wrap();
+    await waitFor(() => expect(screen.getByText("고시반")).toBeTruthy());
+
+    await fireEvent.press(screen.getByText("고시반"));
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith(
+      "스터디로그 초대코드: A3K9P2"
+    );
+
+    await waitFor(() => expect(screen.getByText("초대코드를 복사했어요")).toBeTruthy());
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
   it("참여 실패 시 서버 detail을 그대로 보여준다", async () => {
     mockApi(groups, { ok: false, status: 404, body: { detail: "존재하지 않는 초대코드입니다." } });
     const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});

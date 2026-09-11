@@ -1,14 +1,17 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, BackHandler, Pressable, View } from "react-native";
+import { ActivityIndicator, BackHandler, View } from "react-native";
 
 import { ApiError } from "../src/api/client";
 import { useInvalidateAll } from "../src/api/hooks";
 import type { JudgeResultOut } from "../src/api/types";
 import { uploadPhoto, type ShotKind } from "../src/api/upload";
+import { Appear } from "../src/design/Appear";
 import { Button } from "../src/design/Button";
+import { haptic } from "../src/design/motion";
 import { T } from "../src/design/Text";
+import { Touchable } from "../src/design/Touchable";
 import { color, radius, space } from "../src/design/tokens";
 import { remainingBeforeForfeit } from "../src/time/elapsed";
 
@@ -55,6 +58,8 @@ export default function Capture() {
       const photo = await cameraRef.current?.takePictureAsync({ quality: 0.8 });
       const result = await uploadPhoto(kind, photo?.uri ?? "", { sessionId, activity });
       await invalidate();
+      if (result.result === "pass") haptic.success();
+      else haptic.warning();
       setPhase({ name: "judged", result });
     } catch (error) {
       if (error instanceof ApiError && error.kind === "notFound") {
@@ -85,7 +90,7 @@ export default function Capture() {
   if (phase.name === "judged") {
     const passed = phase.result.result === "pass";
     return (
-      <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
+      <Appear style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
         <T variant="title">
           {passed ? (kind === "start" ? "공부 시작됨" : "공부 종료됨") : "인증이 거절됐습니다"}
         </T>
@@ -108,7 +113,7 @@ export default function Capture() {
             />
           </View>
         )}
-      </View>
+      </Appear>
     );
   }
 
@@ -118,20 +123,20 @@ export default function Capture() {
     if (phase.notFound) {
       // 재시도로는 절대 뚫리지 않는다 — 다시 찍기를 주면 안 되고, 나갈 방법을 줘야 한다.
       return (
-        <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
+        <Appear style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
           <T variant="title">세션을 찾을 수 없습니다</T>
           <T variant="body" kind="sub">
             {phase.message}
           </T>
           <Button label="확인" tone="primary" onPress={() => router.back()} />
-        </View>
+        </Appear>
       );
     }
 
     const remaining = isEnd && startedAt ? remainingBeforeForfeit(startedAt, new Date()) : null;
 
     return (
-      <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
+      <Appear style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
         <T variant="title">사진을 올리지 못했습니다</T>
         <T variant="body" kind="sub">
           {phase.message}
@@ -146,7 +151,7 @@ export default function Capture() {
         )}
         <Button label="다시 시도" tone="primary" onPress={shoot} />
         {!isEnd && <Button label="닫기" tone="text" onPress={() => router.back()} />}
-      </View>
+      </Appear>
     );
   }
 
@@ -162,23 +167,22 @@ export default function Capture() {
             </T>
           </View>
         ) : (
-          <Pressable
+          <Touchable
             accessibilityRole="button"
             onPress={shoot}
-            style={({ pressed }) => ({
+            style={{
               width: SHUTTER_SIZE,
               height: SHUTTER_SIZE,
               borderRadius: radius.pill,
               backgroundColor: color.accent,
               alignItems: "center",
               justifyContent: "center",
-              opacity: pressed ? 0.7 : 1,
-            })}
+            }}
           >
             <T variant="section" style={{ color: color.bg }}>
               촬영
             </T>
-          </Pressable>
+          </Touchable>
         )}
       </View>
     </View>

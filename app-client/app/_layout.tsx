@@ -43,6 +43,9 @@ export default function RootLayout() {
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: color.bg },
+            // 안드로이드 기본값은 위로 튀어오르는 전환이라 iOS 와 방향이
+            // 어긋난다. 같은 앱이 플랫폼마다 다르게 움직이면 안 된다.
+            animation: "slide_from_right",
           }}
         >
           <Stack.Screen
