@@ -160,7 +160,7 @@ describe("홈", () => {
       "/users/me": me,
       "/sessions/current": null,
       "/challenges/current": challenge,
-      "/records/me?limit=30": records,
+      "/records/me?limit=90": records,
     });
     // entry_amount(30,000) - 이 챌린지 안의 적립(2,000) = 28,000
     await waitFor(() => expect(screen.getByText("28,000")).toBeTruthy());
@@ -173,7 +173,7 @@ describe("홈", () => {
       "/users/me": { ...me, credit_balance: 12000 }, // 다른 챌린지에서 남은 크레딧
       "/sessions/current": null,
       "/challenges/current": challenge,
-      "/records/me?limit=30": [], // 이 챌린지 안에서는 아직 아무것도 확정되지 않았다
+      "/records/me?limit=90": [], // 이 챌린지 안에서는 아직 아무것도 확정되지 않았다
     });
     // 이 챌린지는 아직 하나도 못 받았으니 30,000 전액이 위험에 남아 있어야 한다.
     await waitFor(() => expect(screen.getByText("30,000")).toBeTruthy());
@@ -191,7 +191,7 @@ describe("홈", () => {
       "/users/me": { ...me, credit_balance: 10000 },
       "/sessions/current": null,
       "/challenges/current": challenge,
-      "/records/me?limit=30": records,
+      "/records/me?limit=90": records,
     });
     await waitFor(() => expect(screen.getByText("29,000")).toBeTruthy());
     await before.unmount();
@@ -201,7 +201,7 @@ describe("홈", () => {
       "/users/me": { ...me, credit_balance: 8000 },
       "/sessions/current": null,
       "/challenges/current": challenge,
-      "/records/me?limit=30": records,
+      "/records/me?limit=90": records,
     });
     // 여전히 29,000 이어야 한다 — 늘지도 줄지도 않는다.
     await waitFor(() => expect(screen.getByText("29,000")).toBeTruthy());
@@ -260,7 +260,7 @@ describe("홈", () => {
       "/users/me": me,
       "/sessions/current": null,
       "/challenges/current": challenge,
-      "/records/me?limit=30": records,
+      "/records/me?limit=90": records,
     });
 
     await waitFor(() => expect(screen.getAllByTestId("day-cell")).toHaveLength(30));

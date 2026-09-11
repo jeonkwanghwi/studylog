@@ -5,9 +5,11 @@ import { BackHandler } from "react-native";
 
 import Capture from "../app/capture";
 
+const mockSetOptions = jest.fn();
 jest.mock("expo-router", () => ({
   router: { back: jest.fn(), replace: jest.fn(), push: jest.fn() },
   useLocalSearchParams: jest.fn(),
+  useNavigation: () => ({ setOptions: mockSetOptions }),
 }));
 
 jest.mock("expo-camera", () => ({
@@ -39,6 +41,7 @@ beforeEach(() => {
 afterEach(() => {
   jest.restoreAllMocks();
   jest.useRealTimers();
+  mockSetOptions.mockClear();
 });
 
 describe("종료 샷 실패", () => {
@@ -130,6 +133,48 @@ describe("종료 샷 실패", () => {
       expect(
         addEventListenerSpy.mock.calls.some(([name]) => name === "hardwareBackPress")
       ).toBe(false);
+    });
+
+    it("언마운트되면 리스너를 지운다 — 안 지우면 이 모달이 닫힌 뒤에도 앱 전체의 뒤로가기가 먹통이 된다", async () => {
+      jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+      const removeMock = jest.fn();
+      jest.spyOn(BackHandler, "addEventListener").mockReturnValue({ remove: removeMock });
+
+      const view = await wrap();
+      fireEvent.press(screen.getByText("촬영"));
+      await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
+      expect(removeMock).not.toHaveBeenCalled();
+
+      await view.unmount();
+      expect(removeMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("iOS 스와이프 제스처 — BackHandler 와 같은 조건 하나로 통제한다", () => {
+    it("촬영 준비 화면(시작 경로 포함)에서는 제스처를 막지 않는다", async () => {
+      await wrapStart();
+      await waitFor(() => expect(mockSetOptions).toHaveBeenCalledWith({ gestureEnabled: true }));
+    });
+
+    it("종료 샷이 재시도 가능한 오류 상태일 때는 제스처를 막는다", async () => {
+      jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+      await wrap();
+      fireEvent.press(screen.getByText("촬영"));
+
+      await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
+      expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: false });
+    });
+
+    it("404(재시도 불가) 상태에서는 제스처를 다시 허용한다 — 나갈 방법이 있어야 한다", async () => {
+      jest.spyOn(global, "fetch").mockResolvedValue({
+        ok: false, status: 404,
+        json: async () => ({ detail: "세션을 찾을 수 없습니다" }),
+      } as Response);
+      await wrap();
+      fireEvent.press(screen.getByText("촬영"));
+
+      await waitFor(() => expect(screen.getByText("확인")).toBeTruthy());
+      expect(mockSetOptions).toHaveBeenLastCalledWith({ gestureEnabled: true });
     });
   });
 

@@ -1,5 +1,5 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, BackHandler, Pressable, View } from "react-native";
 
@@ -30,16 +30,23 @@ export default function Capture() {
   const [phase, setPhase] = useState<Phase>({ name: "ready" });
   const cameraRef = useRef<CameraView>(null);
   const invalidate = useInvalidateAll();
+  const navigation = useNavigation();
 
   // 종료 샷이 error 이고 재시도로 절대 뚫리지 않을 상태(notFound)가 아니면,
-  // 하드웨어 뒤로가기로 이 화면을 빠져나갈 수 없다 — 나가면 세션이 4시간 뒤
-  // 조용히 회수된다. ready/judged 등 다른 상태에서는 절대 막지 않는다.
+  // 이 화면을 빠져나갈 수 없다 — 나가면 세션이 4시간 뒤 조용히 회수된다.
+  // ready/judged 등 다른 상태에서는(특히 시작 경로에서는) 절대 막지 않는다 —
+  // 하드웨어 back 과 iOS 스와이프 두 출구를 이 하나의 조건으로만 통제한다.
   const blockExit = kind === "end" && phase.name === "error" && !phase.notFound;
+
   useEffect(() => {
     if (!blockExit) return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => true);
     return () => sub.remove();
   }, [blockExit]);
+
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !blockExit });
+  }, [navigation, blockExit]);
 
   async function shoot() {
     setPhase({ name: "uploading" });

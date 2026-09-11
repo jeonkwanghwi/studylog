@@ -6,6 +6,7 @@ import Capture from "../app/capture";
 jest.mock("expo-router", () => ({
   router: { back: jest.fn(), replace: jest.fn(), push: jest.fn() },
   useLocalSearchParams: () => ({ kind: "start" }),
+  useNavigation: () => ({ setOptions: jest.fn() }),
 }));
 
 jest.mock("expo-camera", () => ({

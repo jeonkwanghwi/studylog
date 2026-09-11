@@ -49,10 +49,15 @@ export const useFeed = (groupId: string | undefined) =>
     enabled: Boolean(groupId),
   });
 
+// limit=90: 30일이 현재 최대 챌린지 길이라 페이지 하나로 그 전체가 들어와야
+// 하지만, 30으로 딱 맞추면 그 챌린지 이전의 기록 하나만 있어도 가장 이른
+// 날짜가 페이지 밖으로 밀려 C1의 적립 합계가 조용히 줄어든다. 여유를 둔다.
+// 상품이 30일을 넘기게 되면 이 페이지 크기를 늘리는 대신 서버가 날짜
+// 범위로 걸러주는 게 맞다.
 export const useRecords = () =>
   useQuery({
     queryKey: keys.records,
-    queryFn: () => api.get<DailyRecordOut[]>("/records/me?limit=30"),
+    queryFn: () => api.get<DailyRecordOut[]>("/records/me?limit=90"),
   });
 
 /** 세션·유저·챌린지는 함께 움직인다. 하나가 바뀌면 셋 다 다시 읽는다. */
