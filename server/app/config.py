@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     jwt_days: int = 90
     apple_bundle_id: str = "com.studylog.app"
     google_client_id: str = ""
+    google_ios_client_id: str = ""
+    google_android_client_id: str = ""
+    kakao_rest_api_key: str = ""   # 카카오 OIDC 의 audience
 
     # 스토리지
     s3_bucket: str = "studylog-photos"

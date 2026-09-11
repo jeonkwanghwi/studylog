@@ -6,7 +6,7 @@
 
 **Architecture:** Expo Router의 파일 기반 라우팅으로 4개 탭(홈·피드·기록·설정)과 3개 모달(촬영·이의제기·복구)을 구성한다. 서버 상태는 전부 TanStack Query가 들고, 전역 상태 관리자는 두지 않는다 — 이 앱이 다루는 상태는 사실상 전부 서버 상태다. 토큰만 expo-secure-store에 남는다. 시간·판정·가격은 앱이 계산하지 않고 서버가 준 값을 표시만 한다.
 
-**Tech Stack:** Expo SDK 52 / TypeScript / Expo Router / TanStack Query v5 / expo-camera / expo-secure-store / expo-notifications / react-native-purchases (RevenueCat) / IBM Plex Sans KR · IBM Plex Mono / Jest + React Native Testing Library
+**Tech Stack:** Expo SDK 57 (React 19 / RN 0.86) / TypeScript / Expo Router / TanStack Query v5 / expo-camera / expo-secure-store / expo-notifications / react-native-purchases (RevenueCat) / IBM Plex Sans KR · IBM Plex Mono / Jest + React Native Testing Library
 
 **Spec:** [`docs/superpowers/specs/2026-09-09-studylog-v1-design.md`](../specs/2026-09-09-studylog-v1-design.md) — 특히 §9.1(앱 설계)와 §4(핵심 흐름)
 
@@ -26,37 +26,62 @@
 - 401 응답은 토큰 만료로 간주하고 로그인 화면으로 보낸다. 403·402·409는 각각 다른 안내 문구를 쓴다
 - API 기본 주소는 `EXPO_PUBLIC_API_URL` 환경변수로 주입한다. 소스에 도메인을 박지 않는다
 
+### 환경 (Task 1에서 확인된 실제 값)
+
+- Node는 nvm에만 있고 기본 PATH에 없다. 모든 셸에서 먼저 실행한다:
+  `export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$PATH"`
+- 설치된 것은 **Expo SDK 57 / React 19.2 / React Native 0.86**이다
+- `npm install` 은 **`--legacy-peer-deps`** 가 필요하다. 이 조합에서 peer 범위가 아직 어긋나 있다
+- `jest-expo` 는 `@react-native/jest-preset` 을 peer로 요구하므로 dev 의존성에 함께 넣는다
+- `expo start --web` 은 `react-dom` 과 `react-native-web` 이 있어야 뜬다
+- `npx expo install` 로 Expo 패키지를 넣고, 나머지는 `npm install --legacy-peer-deps` 로 넣는다
+
 ### 스타일은 전부 `src/design` 에서 온다
 
 **Task 3 이후의 어떤 화면도 색·간격·글자 크기를 직접 쓰지 않는다.** Task 4~16의 코드
 블록에는 값이 직접 적혀 있는데, 그것은 구조를 보여주기 위한 것이고 **아래 대응표대로
-치환해서 구현한다.** 값을 그대로 두면 열 화면 뒤에는 되돌릴 수 없다.
+치환해서 구현한다.**
+
+디자인 시스템은 토스를 기준으로 잡혀 있다 — 흰 바탕, 강조색은 파랑 하나, 위계는
+색이 아니라 **굵기와 여백**으로 만든다. 전 사이즈에 음수 자간이 들어가 있고, 그것이
+한국어 UI가 성기지 않고 단단해 보이는 이유의 큰 부분이다.
 
 | 코드 블록의 값 | 치환 |
 |---|---|
-| `#18181b`, `#000` (배경) | `color.ink` |
-| `#fff` (잉크 위 글자) | `color.paper` |
-| `#f4f4f5` (면) | `<Sheet>` 로 교체 |
-| `#e4e4e7`, `#ddd`, `#d4d4d8` (선) | `color.line` |
-| `#52525b` | `<T kind="muted">` |
-| `#71717a`, `#a1a1aa` | `<T variant="small" kind="muted">` |
-| `#dc2626` (위험·손실) | `color.stamp` |
-| `#2563eb` (링크성 액션) | `<Button tone="quiet">` |
-| `#16a34a` (성공) | 쓰지 않는다. 달성은 `color.highlight` 마크로 표현한다 |
-| `padding: 14/16/18`, `gap: 8/12/16` | `space.sm` `space.md` `space.lg` |
-| `borderRadius: 10/12/14/16` | `radius.sheet` (면) · `radius.button` (버튼) |
-| `fontSize: 34/44` | `<T variant="display">` |
-| `fontSize: 22/24`, `fontWeight: "700"` | `<T variant="title">` |
-| `fontSize: 13`, `fontSize: 12` | `<T variant="small">` |
-| 금액을 그리는 모든 `<Text>` | `<T variant="amount">` — 자릿수가 세로로 맞아야 한다 |
+| `#18181b`, `#000` (배경) | `color.accent` (주요 동작) 또는 `color.text` (글자) |
+| `#fff` (강조 위 글자) | `"#FFFFFF"` — `Button` 이 알아서 처리한다 |
+| `#f4f4f5` (면) | `<Card>` 로 교체. 그냥 채움이면 `color.fill` |
+| `#e4e4e7`, `#ddd`, `#d4d4d8` (선) | 선을 쓰지 않는다. 여백이나 `color.fill` 로 구분한다 |
+| `#52525b` | `<T kind="sub">` |
+| `#71717a`, `#a1a1aa` | `<T variant="caption" kind="muted">` |
+| `#dc2626` (위험·손실) | `<T kind="negative">` / `color.negative` |
+| `#2563eb` (링크성 액션) | `<Button tone="text">` |
+| `#16a34a` (성공) | 초록을 쓰지 않는다. 긍정은 `color.accent` 다 |
+| `padding: 14/16/18` | `space.base` (16) · `space.lg` (20) · `space.xl` (24) |
+| `gap: 8/12/16` | `space.sm` · `space.md` · `space.base` |
+| `borderRadius: 10/12/14/16` | `radius.card` (면) · `radius.button` (버튼) · `radius.chip` (작은 것) |
+| `fontSize: 34/44` | `<T variant="hero">` |
+| `fontSize: 22/24`, `fontWeight:"700"` | `<T variant="title">` |
+| `fontSize: 17~20` 소제목 | `<T variant="section">` |
+| `fontSize: 15` 본문 | `<T variant="body">` |
+| `fontSize: 12/13` | `<T variant="caption">` |
+| 금액을 그리는 모든 것 | `<Amount value={n} size kind />` — 절대 `₩` 문자를 쓰지 않는다 |
 | `<Text>` · `<Pressable>` 직접 사용 | `<T>` · `<Button>` |
+| `Sheet` (구 이름) | `<Card>` |
+| `TickStrip` (구 이름) | `<DayGrid start days marks today />` |
+
+**컴포넌트 이름이 바뀐 것** — 계획 본문에 `Sheet`·`TickStrip` 이 남아 있으면 각각
+`Card`·`DayGrid` 로 읽는다. `CreditMeter` 는 만들지 않는다. 홈의 금액 표시는
+`<Amount size="hero">` 와 `<T>` 조합으로 직접 짜고, 진행 상황은 `<DayGrid>` 가 보여준다.
 
 **홈의 가장 큰 숫자는 "돌려받은 돈"이 아니라 "아직 못 받은 돈"이다.** 같은 데이터를
-뒤집는 것만으로 화면이 제품의 논지(손실회피)를 말한다. 보상 프레임으로 크게 띄우면
-그냥 또 하나의 적립 앱이 된다. `CreditMeter` 는 그렇게 다시 만든다.
+뒤집는 것만으로 화면이 제품의 논지(손실회피)를 말한다.
 
-**움직이는 것은 하나뿐이다** — 인증이 통과되면 오늘 눈금이 칠해진다. 화면 진입
-페이드, 카드 호버, 순차 등장은 넣지 않는다.
+**솔리드 강조색은 주요 동작 하나에만 쓴다.** 화면 안에서 `tone="primary"` 버튼이
+가장 강한 요소여야 한다. 다른 것이 같은 파랑으로 채워지면 그 특별함이 사라진다.
+
+**움직이는 것은 하나뿐이다** — 인증이 통과되면 오늘 칸이 칠해진다. 화면 진입 페이드,
+카드 호버, 순차 등장은 넣지 않는다.
 
 ---
 
@@ -2151,6 +2176,12 @@ const wrap = () =>
     </QueryClientProvider>
   );
 
+/** 시작 샷 경로. useLocalSearchParams 모킹을 kind="start" 로 바꿔 렌더한다. */
+const wrapStart = () => {
+  jest.mocked(useLocalSearchParams).mockReturnValue({ kind: "start" });
+  return wrap();
+};
+
 afterEach(() => {
   jest.restoreAllMocks();
   jest.useRealTimers();
@@ -2178,9 +2209,16 @@ describe("종료 샷 실패", () => {
     );
   });
 
-  it("시작 샷 실패는 그냥 닫아도 된다", async () => {
-    // 이 케이스는 Task 7 테스트가 덮는다. 여기서는 종료 샷만 다룬다.
-    expect(true).toBe(true);
+  it("시작 샷 실패는 닫을 수 있다", async () => {
+    // 같은 error 분기가 kind 에 따라 갈린다. 시작 샷에서 닫기가 살아있는지
+    // 여기서 함께 확인해야, 나중에 누가 분기를 합쳐도 테스트가 잡는다.
+    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    wrapStart();
+    fireEvent.press(screen.getByText("촬영"));
+
+    await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
+    expect(screen.getByText("닫기")).toBeTruthy();
+    expect(screen.queryByText(/오늘 기록이 사라집니다/)).toBeNull();
   });
 
   it("재시도해서 성공하면 종료 결과를 보여준다", async () => {
@@ -3864,11 +3902,21 @@ git commit -m "feat(app): 설정·온보딩·푸시 등록"
 
 ---
 
-## Task 15: Apple / Google 로그인 실연동
+## Task 15: Apple / Kakao / Google 로그인 실연동
 
 Task 5의 로그인은 `EXPO_PUBLIC_DEV_ID_TOKEN` 을 그대로 서버에 보내는 개발용
-우회다. 서버는 그 토큰을 Apple·Google JWKS로 **실제로 검증**하므로, 진짜
+우회다. 서버는 그 토큰을 Apple·Kakao·Google JWKS로 **실제로 검증**하므로, 진짜
 id_token 을 받아오지 않으면 실기기에서 로그인이 되지 않는다.
+
+**카카오가 한국에서 가장 중요한 경로다.** 애플은 iOS에서 타사 로그인을 제공하면
+애플이 의무화하므로 필수이고, 구글은 서버가 이미 지원하니 공짜로 딸려온다.
+셋 다 OIDC라 서버 쪽은 검증기 표에 한 줄씩일 뿐이고, 다른 건 앱에서 id_token 을
+어떻게 받아오느냐다.
+
+카카오는 **네이티브 SDK 없이 `expo-auth-session` 의 브라우저 플로우**로 받는다.
+Expo Go 에서 그대로 테스트되고 config plugin 이 필요 없다. 권한 요청 시
+`scope` 에 `openid` 를 반드시 넣어야 `id_token` 이 돌아온다 — 빠뜨리면
+access token 만 오고 서버가 검증할 것이 없다.
 
 **Files:**
 - Create: `app-client/src/auth/social.ts`

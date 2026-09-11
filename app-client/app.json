@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "스터디로그",
+    "slug": "studylog",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "usesAppleSignIn": true,
+      "bundleIdentifier": "com.studylog.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "공부 인증 사진을 찍습니다."
+      }
+    },
+    "android": {
+      "package": "com.studylog.app",
+      "permissions": ["CAMERA"],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "scheme": "studylog",
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      "expo-camera",
+      "expo-font",
+      "expo-web-browser",
+      "expo-apple-authentication"
+    ],
+    "platforms": [
+      "ios",
+      "android"
+    ]
+  }
+}
