@@ -20,11 +20,16 @@ function toISODate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** start 로부터 offset 일 뒤의 날짜를 YYYY-MM-DD 로 준다. 챌린지 일수를 날짜로 인덱싱할 때 쓴다. */
+export function isoDateAtOffset(start: string, offset: number): string {
+  return toISODate(addDays(start, offset));
+}
+
 type CellState = Mark | "today";
 
 const BG: Record<CellState, string> = {
   secured: color.accentSoft,
-  missed: "#FEECEE",
+  missed: color.negativeSoft,
   pending: color.fill,
   today: color.accent,
 };

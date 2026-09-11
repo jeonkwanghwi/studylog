@@ -1,7 +1,8 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ScrollView, TextInput, View } from "react-native";
+import { Alert, ScrollView, TextInput, View } from "react-native";
 
+import { ApiError } from "../../src/api/client";
 import { useMe, useSetGoal } from "../../src/api/hooks";
 import { useAuth } from "../../src/auth/useAuth";
 import { GOAL_MAX_MINUTES, GOAL_MIN_MINUTES } from "../../src/config";
@@ -23,8 +24,21 @@ export default function Settings() {
 
   function save() {
     const value = Number(minutes);
-    if (!Number.isInteger(value) || value < GOAL_MIN_MINUTES || value > GOAL_MAX_MINUTES) return;
-    setGoal.mutate(value);
+    if (!Number.isInteger(value) || value < GOAL_MIN_MINUTES || value > GOAL_MAX_MINUTES) {
+      Alert.alert(
+        "목표 저장 실패",
+        `${GOAL_MIN_MINUTES}~${GOAL_MAX_MINUTES}분 사이로 입력해주세요.`
+      );
+      return;
+    }
+    setGoal.mutate(value, {
+      onError: (error) => {
+        Alert.alert(
+          "목표 저장 실패",
+          error instanceof ApiError ? error.detail : "잠시 후 다시 시도해주세요."
+        );
+      },
+    });
   }
 
   // PATCH 응답이 그대로 me 캐시에 들어가므로(useSetGoal.onSuccess), 여기서는
@@ -77,8 +91,14 @@ export default function Settings() {
       <Button
         label="알림 다시 설정"
         tone="secondary"
-        onPress={() => {
-          registerPushToken();
+        onPress={async () => {
+          const granted = await registerPushToken();
+          Alert.alert(
+            granted ? "알림 설정됨" : "알림을 설정하지 못했습니다",
+            granted
+              ? "이제부터 알림을 받을 수 있습니다."
+              : "기기 설정에서 알림 권한을 허용해주세요."
+          );
         }}
       />
 

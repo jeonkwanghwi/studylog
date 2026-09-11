@@ -32,7 +32,7 @@ export default function Appeal() {
       setPhase({ name: "judged", result });
     } catch (error) {
       const detail =
-        error instanceof ApiError && error.kind === "conflict"
+        error instanceof ApiError && error.kind !== "other"
           ? error.detail
           : "요청을 보내지 못했습니다. 잠시 후 다시 시도해주세요.";
       setPhase({ name: "refused", detail });

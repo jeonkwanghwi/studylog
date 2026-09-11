@@ -1,8 +1,9 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
-import { useRef, useState } from "react";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, BackHandler, Pressable, View } from "react-native";
 
+import { ApiError } from "../src/api/client";
 import { useInvalidateAll } from "../src/api/hooks";
 import type { JudgeResultOut } from "../src/api/types";
 import { uploadPhoto, type ShotKind } from "../src/api/upload";
@@ -15,7 +16,7 @@ type Phase =
   | { name: "ready" }
   | { name: "uploading" }
   | { name: "judged"; result: JudgeResultOut }
-  | { name: "error"; message: string };
+  | { name: "error"; message: string; notFound: boolean };
 
 const SHUTTER_SIZE = 76;
 
@@ -30,6 +31,16 @@ export default function Capture() {
   const cameraRef = useRef<CameraView>(null);
   const invalidate = useInvalidateAll();
 
+  // 종료 샷이 error 이고 재시도로 절대 뚫리지 않을 상태(notFound)가 아니면,
+  // 하드웨어 뒤로가기로 이 화면을 빠져나갈 수 없다 — 나가면 세션이 4시간 뒤
+  // 조용히 회수된다. ready/judged 등 다른 상태에서는 절대 막지 않는다.
+  const blockExit = kind === "end" && phase.name === "error" && !phase.notFound;
+  useEffect(() => {
+    if (!blockExit) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => true);
+    return () => sub.remove();
+  }, [blockExit]);
+
   async function shoot() {
     setPhase({ name: "uploading" });
     try {
@@ -38,7 +49,17 @@ export default function Capture() {
       await invalidate();
       setPhase({ name: "judged", result });
     } catch (error) {
-      setPhase({ name: "error", message: (error as Error).message });
+      if (error instanceof ApiError && error.kind === "notFound") {
+        // 404 는 이 세션이 이미 끝났거나 회수됐다는 뜻이다 — 재시도해도 절대
+        // 성공할 수 없으므로, 종료 경로라도 나갈 방법을 줘야 한다.
+        setPhase({
+          name: "error",
+          message: "이미 종료되었거나 더 이상 열려 있지 않은 세션입니다.",
+          notFound: true,
+        });
+      } else {
+        setPhase({ name: "error", message: (error as Error).message, notFound: false });
+      }
     }
   }
 
@@ -85,6 +106,20 @@ export default function Capture() {
 
   if (phase.name === "error") {
     const isEnd = kind === "end";
+
+    if (phase.notFound) {
+      // 재시도로는 절대 뚫리지 않는다 — 다시 찍기를 주면 안 되고, 나갈 방법을 줘야 한다.
+      return (
+        <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
+          <T variant="title">세션을 찾을 수 없습니다</T>
+          <T variant="body" kind="sub">
+            {phase.message}
+          </T>
+          <Button label="확인" tone="primary" onPress={() => router.back()} />
+        </View>
+      );
+    }
+
     const remaining = isEnd && startedAt ? remainingBeforeForfeit(startedAt, new Date()) : null;
 
     return (

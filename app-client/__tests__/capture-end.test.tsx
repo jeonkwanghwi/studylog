@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { useLocalSearchParams } from "expo-router";
+import { BackHandler } from "react-native";
 
 import Capture from "../app/capture";
 
@@ -77,6 +78,59 @@ describe("종료 샷 실패", () => {
     await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
     expect(screen.getByText("닫기")).toBeTruthy();
     expect(screen.queryByText(/오늘 기록이 사라집니다/)).toBeNull();
+  });
+
+  it("404 는 이 세션이 더 이상 열려 있지 않다는 뜻이라 재시도 대신 나갈 방법을 준다", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: false, status: 404,
+      json: async () => ({ detail: "세션을 찾을 수 없습니다" }),
+    } as Response);
+    await wrap();
+    fireEvent.press(screen.getByText("촬영"));
+
+    await waitFor(() => expect(screen.getByText("세션을 찾을 수 없습니다")).toBeTruthy());
+    // 재시도로는 절대 뚫리지 않으니 "다시 시도"를 주면 안 되고, 나갈 방법(확인)을 줘야 한다.
+    expect(screen.queryByText("다시 시도")).toBeNull();
+    expect(screen.getByText("확인")).toBeTruthy();
+  });
+
+  describe("하드웨어 뒤로가기", () => {
+    it("종료 샷이 재시도 가능한 오류 상태일 때는 뒤로가기를 삼킨다", async () => {
+      jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+      const addEventListenerSpy = jest.spyOn(BackHandler, "addEventListener");
+      await wrap();
+      fireEvent.press(screen.getByText("촬영"));
+      await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
+
+      const call = addEventListenerSpy.mock.calls.find(([name]) => name === "hardwareBackPress");
+      expect(call).toBeTruthy();
+      const handler = call?.[1] as () => boolean;
+      expect(handler()).toBe(true);
+    });
+
+    it("촬영 준비 화면(다른 상태)에서는 뒤로가기를 막지 않는다", async () => {
+      const addEventListenerSpy = jest.spyOn(BackHandler, "addEventListener");
+      await wrap();
+
+      expect(
+        addEventListenerSpy.mock.calls.some(([name]) => name === "hardwareBackPress")
+      ).toBe(false);
+    });
+
+    it("404(재시도 불가) 상태에서는 뒤로가기를 막지 않는다 — 나갈 방법이 있어야 한다", async () => {
+      jest.spyOn(global, "fetch").mockResolvedValue({
+        ok: false, status: 404,
+        json: async () => ({ detail: "세션을 찾을 수 없습니다" }),
+      } as Response);
+      const addEventListenerSpy = jest.spyOn(BackHandler, "addEventListener");
+      await wrap();
+      fireEvent.press(screen.getByText("촬영"));
+      await waitFor(() => expect(screen.getByText("확인")).toBeTruthy());
+
+      expect(
+        addEventListenerSpy.mock.calls.some(([name]) => name === "hardwareBackPress")
+      ).toBe(false);
+    });
   });
 
   it("재시도해서 성공하면 종료 결과를 보여준다", async () => {

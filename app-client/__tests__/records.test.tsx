@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import Records from "../app/(tabs)/records";
 import Restore from "../app/restore/[recordId]";
@@ -74,6 +74,36 @@ describe("기록", () => {
     await wrap(<Records />);
     await waitFor(() => expect(screen.getByText(/크레딧이 부족/)).toBeTruthy());
     expect(screen.queryByText("복구하기")).toBeNull();
+  });
+
+  it("기록이 없으면 초대하는 말투로 안내한다", async () => {
+    mockApi({ "/records/me": [] });
+    await wrap(<Records />);
+    await waitFor(() => expect(screen.getByText(/아직 기록이 없습니다/)).toBeTruthy());
+  });
+
+  it("기록을 불러오는 동안에는 빈 화면 안내를 먼저 보여주지 않는다", async () => {
+    let resolveRecords: (value: unknown) => void = () => {};
+    const pending = new Promise((resolve) => {
+      resolveRecords = resolve;
+    });
+    jest.spyOn(global, "fetch").mockImplementation((url) => {
+      const path = String(url).replace("http://127.0.0.1:8000", "").split("?")[0];
+      if (path === "/records/me") {
+        return pending.then(() => ({ ok: true, status: 200, json: async () => [] }) as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => (path === "/users/me" ? me : null) } as Response);
+    });
+
+    await wrap(<Records />);
+    expect(screen.queryByText(/아직 기록이 없습니다/)).toBeNull();
+    expect(screen.queryByText("기록")).toBeNull();
+
+    await act(async () => {
+      resolveRecords(null);
+      await pending;
+    });
+    await waitFor(() => expect(screen.getByText(/아직 기록이 없습니다/)).toBeTruthy());
   });
 });
 

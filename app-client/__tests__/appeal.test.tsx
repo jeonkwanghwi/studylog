@@ -80,4 +80,17 @@ describe("이의제기", () => {
       expect(screen.getByText("이의제기는 한 번만 가능합니다")).toBeTruthy()
     );
   });
+
+  it("404 는 이 사진이 내 것이 아니라는 뜻이라 서버 detail을 그대로 보여준다", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: false, status: 404,
+      json: async () => ({ detail: "내 사진이 아닙니다" }),
+    } as Response);
+
+    await wrap();
+    await fireEvent.changeText(screen.getByPlaceholderText(/무엇을 하고 있었는지/), "공부 중");
+    await fireEvent.press(screen.getByText("다시 판정 요청"));
+
+    await waitFor(() => expect(screen.getByText("내 사진이 아닙니다")).toBeTruthy());
+  });
 });

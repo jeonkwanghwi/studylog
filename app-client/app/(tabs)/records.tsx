@@ -1,12 +1,12 @@
 import { router } from "expo-router";
-import { ScrollView, View } from "react-native";
+import { ActivityIndicator, ScrollView, View } from "react-native";
 
 import { useMe, useRecords } from "../../src/api/hooks";
 import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { T } from "../../src/design/Text";
-import { space } from "../../src/design/tokens";
+import { color, space } from "../../src/design/tokens";
 import { RESTORE_COST, formatWon } from "../../src/money/format";
 import { canRestore, formatElapsed } from "../../src/time/elapsed";
 import type { DailyRecordOut } from "../../src/api/types";
@@ -23,13 +23,29 @@ export default function Records() {
   const balance = me.data?.credit_balance ?? 0;
   const now = new Date();
 
+  if (records.isLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color={color.accent} />
+      </View>
+    );
+  }
+
+  const list = records.data ?? [];
+
   return (
     <ScrollView
       contentContainerStyle={{ padding: space.lg, paddingTop: space.huge, gap: space.md }}
     >
       <T variant="title">기록</T>
 
-      {(records.data ?? []).map((record) => {
+      {list.length === 0 && (
+        <T variant="body" kind="sub">
+          아직 기록이 없습니다. 오늘 공부를 시작하면 여기에 하루하루 쌓여요.
+        </T>
+      )}
+
+      {list.map((record) => {
         const restorable =
           record.result === "failed" && canRestore(record.settled_at, now);
 

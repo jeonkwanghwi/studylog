@@ -63,6 +63,7 @@ export function useInvalidateAll() {
       queryClient.invalidateQueries({ queryKey: keys.me }),
       queryClient.invalidateQueries({ queryKey: keys.session }),
       queryClient.invalidateQueries({ queryKey: keys.challenge }),
+      queryClient.invalidateQueries({ queryKey: keys.records }),
     ]);
 }
 

@@ -42,6 +42,7 @@ describe("API 클라이언트", () => {
     [401, "auth"],
     [402, "payment"],
     [403, "forbidden"],
+    [404, "notFound"],
     [409, "conflict"],
     [500, "other"],
   ])("%i 를 %s 로 분류한다", async (status, kind) => {

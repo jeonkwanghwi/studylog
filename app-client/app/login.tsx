@@ -28,12 +28,16 @@ export default function Login() {
 
   useEffect(() => {
     if (!kakaoIdToken) return;
-    signIn("kakao", kakaoIdToken, DEFAULT_NICKNAME).then(() => router.replace("/"));
+    signIn("kakao", kakaoIdToken, DEFAULT_NICKNAME)
+      .then(() => router.replace("/"))
+      .catch((error) => Alert.alert("로그인 실패", (error as Error).message));
   }, [kakaoIdToken, signIn]);
 
   useEffect(() => {
     if (!googleIdToken) return;
-    signIn("google", googleIdToken, DEFAULT_NICKNAME).then(() => router.replace("/"));
+    signIn("google", googleIdToken, DEFAULT_NICKNAME)
+      .then(() => router.replace("/"))
+      .catch((error) => Alert.alert("로그인 실패", (error as Error).message));
   }, [googleIdToken, signIn]);
 
   async function handleApple() {

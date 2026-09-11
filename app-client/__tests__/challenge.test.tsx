@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { router } from "expo-router";
 
 import Select from "../app/challenge/select";
 
@@ -97,5 +98,88 @@ describe("챌린지 선택", () => {
       ([, init]) => (init as RequestInit | undefined)?.method === "POST"
     );
     expect(posted).toHaveLength(0);
+  });
+
+  // 웹훅이 도착하기 전에는 챌린지가 없다. 그 사이 화면을 나가거나 결제
+  // 버튼을 다시 누르게 두면 두 번째 결제가 나가고 서버는 챌린지를 열어주지
+  // 않는다(활성 챌린지 있음) — 돈만 사라진다.
+  describe("결제 확인 대기", () => {
+    it("결제 성공 뒤 챌린지가 나타날 때까지 화면에 머물고, 그 동안 결제 버튼을 다시 눌러도 소용없다", async () => {
+      const overrides = { "/challenges/current": null as unknown };
+      mockApi(overrides);
+      mockBuyProduct.mockResolvedValue(undefined);
+      await wrap();
+      await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
+
+      await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+      await waitFor(() => expect(mockBuyProduct).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.getByText(/결제를 확인하는 중입니다/)).toBeTruthy());
+
+      // 다시 눌러도 두 번째 결제는 나가지 않는다 — 버튼이 막혀 있다.
+      await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+      expect(mockBuyProduct).toHaveBeenCalledTimes(1);
+      expect(router.back).not.toHaveBeenCalled();
+    });
+
+    it("폴링 중 웹훅이 도착해 챌린지가 나타나면 화면을 나간다", async () => {
+      const overrides = { "/challenges/current": null as unknown };
+      mockApi(overrides);
+      mockBuyProduct.mockResolvedValue(undefined);
+      const setIntervalSpy = jest.spyOn(global, "setInterval");
+
+      await wrap();
+      await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
+      await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+      await waitFor(() => expect(screen.getByText(/결제를 확인하는 중입니다/)).toBeTruthy());
+
+      expect(setIntervalSpy).toHaveBeenCalled();
+      const pollCall = setIntervalSpy.mock.calls.find((c) => c[1] === 2_000);
+      const poll = pollCall?.[0] as () => void;
+
+      // 웹훅이 이제 막 도착해서 서버가 챌린지를 연 상태를 흉내낸다.
+      overrides["/challenges/current"] = {
+        id: "c1", product_id: "challenge_7d_1k", entry_amount: 7000,
+        daily_payback: 1000, completion_bonus: 0, total_days: 7,
+        started_on: "2026-09-11", ends_on: "2026-09-17",
+        paid_with: "iap", status: "active",
+      };
+      await act(async () => {
+        poll();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      await waitFor(() => expect(router.back).toHaveBeenCalled(), { timeout: 3000 });
+    });
+
+    it("30초가 지나도 챌린지가 안 보이면 결제는 끝났다고 안내하고, 버튼은 계속 막아둔다", async () => {
+      const overrides = { "/challenges/current": null as unknown };
+      mockApi(overrides);
+      mockBuyProduct.mockResolvedValue(undefined);
+      const setIntervalSpy = jest.spyOn(global, "setInterval");
+      let now = 1_700_000_000_000;
+      jest.spyOn(Date, "now").mockImplementation(() => now);
+
+      await wrap();
+      await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
+      await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+      await waitFor(() => expect(screen.getByText(/결제를 확인하는 중입니다/)).toBeTruthy());
+
+      const pollCall = setIntervalSpy.mock.calls.find((c) => c[1] === 2_000);
+      const poll = pollCall?.[0] as () => void;
+      now += 31_000;
+      await act(async () => {
+        poll();
+        await Promise.resolve();
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText(/결제가 완료됐습니다/)).toBeTruthy()
+      );
+      expect(screen.getByText("새로고침")).toBeTruthy();
+
+      // 시간이 지나 버튼 문구가 바뀌어도 재구매는 여전히 막혀 있다.
+      await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+      expect(mockBuyProduct).toHaveBeenCalledTimes(1);
+    });
   });
 });

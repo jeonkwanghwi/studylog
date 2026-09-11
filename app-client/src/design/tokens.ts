@@ -8,6 +8,7 @@ export const color = {
   accent: "#2B6CF6", // 단 하나의 강조색
   accentSoft: "#E8F0FE", // 강조색 배경
   negative: "#F04452", // 잃은 돈
+  negativeSoft: "#FEECEE", // 잃은 돈 배경
   line: "#F2F4F6",
 } as const;
 
