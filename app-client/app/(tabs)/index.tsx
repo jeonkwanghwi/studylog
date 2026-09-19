@@ -92,6 +92,7 @@ export default function Home() {
     ? Math.max(0, activeChallenge.entry_amount - earned)
     : 0;
   const marks = activeChallenge ? dayMarks(records.data ?? [], activeChallenge) : [];
+  const securedDays = marks.filter((m) => m === "secured").length;
   const remaining = open ? remainingBeforeForfeit(open.started_at, now) : 0;
 
   return (
@@ -116,15 +117,36 @@ export default function Home() {
       />
 
       {activeChallenge ? (
-        <View style={{ gap: space.sm }}>
-          <T variant="caption" kind="muted">
-            아직 못 받은 돈
-          </T>
-          <Amount value={remainingAtStake} size="hero" roll />
-          <T variant="caption" kind="muted">
-            {activeChallenge.total_days}일 챌린지 · {formatWon(earned)} 확보
-          </T>
-        </View>
+        // 돈과 달력은 같은 것이다. 확보한 하루가 곧 하루치 페이백인데
+        // 따로 떨어져 있으면 그 연결이 보이지 않는다. 한 덩어리로 묶고
+        // 사이에 둘을 잇는 한 줄을 둔다.
+        <Card elevation="raised" style={{ gap: space.base }}>
+          <View style={{ gap: space.xs }}>
+            <T variant="caption" kind="muted">
+              아직 못 받은 돈
+            </T>
+            <Amount value={remainingAtStake} size="hero" roll />
+          </View>
+
+          <View style={{ height: 1, backgroundColor: color.line }} />
+
+          <View style={{ gap: space.md }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <T variant="caption" kind="muted">
+                {monthLabel(studyDayOf(now))}
+              </T>
+              <T variant="caption" kind="sub">
+                {securedDays}일 확보 · {formatWon(earned)} 되찾음
+              </T>
+            </View>
+            <DayGrid
+              start={activeChallenge.started_on}
+              days={activeChallenge.total_days}
+              marks={marks}
+              today={studyDayOf(now)}
+            />
+          </View>
+        </Card>
       ) : (
         <View style={{ gap: space.md }}>
           <T variant="body" kind="sub">
@@ -136,18 +158,6 @@ export default function Home() {
             onPress={() => router.push("/challenge/select")}
           />
         </View>
-      )}
-
-      {activeChallenge && (
-        <Card style={{ gap: space.md }}>
-          <T variant="section">{monthLabel(studyDayOf(now))}</T>
-          <DayGrid
-            start={activeChallenge.started_on}
-            days={activeChallenge.total_days}
-            marks={marks}
-            today={studyDayOf(now)}
-          />
-        </Card>
       )}
 
       {open ? (

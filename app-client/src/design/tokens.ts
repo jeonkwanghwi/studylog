@@ -7,6 +7,10 @@ export const color = {
   textMuted: "#8B95A1", // 3차
   accent: "#2B6CF6", // 단 하나의 강조색
   accentSoft: "#E8F0FE", // 강조색 배경
+  // 확보한 날 칸. accentSoft 로는 대기 칸(fill)과 대비가 1.04 라 진행
+  // 상황이 한눈에 안 보였다. 확보한 날이 띠처럼 이어져 보여야 한다.
+  accentSecured: "#CFDEFC",
+  accentStrong: "#1B4FBF", // 위 배경 위의 글자. 대비 5.32 (AA 통과)
   negative: "#F04452", // 잃은 돈
   negativeSoft: "#FEECEE", // 잃은 돈 배경
   line: "#F2F4F6",

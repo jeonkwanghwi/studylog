@@ -89,7 +89,7 @@ describe("DayGrid", () => {
     const cells = screen.getAllByTestId("day-cell");
     const backgrounds = cells.map((cell) => cell.props.style.backgroundColor);
 
-    expect(backgrounds[0]).toBe(color.accentSoft);
+    expect(backgrounds[0]).toBe(color.accentSecured);
     expect(backgrounds[1]).toBe("#FEECEE");
     expect(backgrounds[2]).toBe(color.fill);
     expect(backgrounds[3]).toBe(color.accent);
@@ -103,5 +103,25 @@ describe("DayGrid", () => {
     const cell = screen.getByTestId("day-cell");
     expect(cell.props.style.backgroundColor).toBe(color.accent);
     expect(cell.props.style.backgroundColor).not.toBe(color.accentSoft);
+  });
+});
+
+describe("DayGrid 가독성", () => {
+  it("확보한 날과 대기 중인 날이 한눈에 구분된다", () => {
+    // 전에는 두 배경의 대비가 1.04 였다 — 같은 색이나 마찬가지라
+    // 며칠을 확보했는지 눈으로 셀 수 없었다.
+    const luminance = (hex: string) => {
+      const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const lin = c.map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+    };
+    const contrast = (a: string, b: string) => {
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+
+    expect(contrast(color.accentSecured, color.fill)).toBeGreaterThan(1.15);
+    // 확보 칸 위의 글자는 AA 를 넘어야 한다.
+    expect(contrast(color.accentStrong, color.accentSecured)).toBeGreaterThan(4.5);
   });
 });

@@ -28,14 +28,14 @@ export function isoDateAtOffset(start: string, offset: number): string {
 type CellState = Mark | "today";
 
 const BG: Record<CellState, string> = {
-  secured: color.accentSoft,
+  secured: color.accentSecured,
   missed: color.negativeSoft,
   pending: color.fill,
   today: color.accent,
 };
 
 const NUMBER_KIND: Record<CellState, "muted" | "accent" | "negative" | "text"> = {
-  secured: "accent",
+  secured: "text",   // 아래에서 accentStrong 으로 덮는다
   missed: "negative",
   pending: "muted",
   today: "text", // overridden to white below
@@ -44,7 +44,7 @@ const NUMBER_KIND: Record<CellState, "muted" | "accent" | "negative" | "text"> =
 // missed 에도 굵기를 준다 — 색만으로 구분하면 색각 이상이 있는 사람에게
 // 실패한 날과 아직 오지 않은 날이 똑같아 보인다.
 const NUMBER_FONT: Partial<Record<CellState, string>> = {
-  secured: fonts.MEDIUM,
+  secured: fonts.BOLD,
   missed: fonts.BOLD,
   today: fonts.BOLD,
 };
@@ -97,6 +97,7 @@ export function DayGrid({
             kind={NUMBER_KIND[state]}
             style={[
               state === "today" ? { color: "#FFFFFF" } : undefined,
+              state === "secured" ? { color: color.accentStrong } : undefined,
               NUMBER_FONT[state] ? { fontFamily: NUMBER_FONT[state] } : undefined,
             ]}
           >

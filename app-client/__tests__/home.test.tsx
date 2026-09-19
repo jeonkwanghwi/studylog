@@ -184,7 +184,7 @@ describe("홈", () => {
     });
     // entry_amount(30,000) - 이 챌린지 안의 적립(2,000) = 28,000
     await waitFor(() => expect(screen.getByText("28,000")).toBeTruthy());
-    expect(screen.getByText(/2,000원 확보/)).toBeTruthy();
+    expect(screen.getByText(/2,000원 되찾음/)).toBeTruthy();
     expect(screen.queryByText("18,000")).toBeNull();
   });
 
@@ -197,7 +197,7 @@ describe("홈", () => {
     });
     // 이 챌린지는 아직 하나도 못 받았으니 30,000 전액이 위험에 남아 있어야 한다.
     await waitFor(() => expect(screen.getByText("30,000")).toBeTruthy());
-    expect(screen.getByText(/0원 확보/)).toBeTruthy();
+    expect(screen.getByText(/0원 되찾음/)).toBeTruthy();
   });
 
   it("스트릭 복구에 크레딧을 써도 이 챌린지의 남은 금액은 움직이지 않는다", async () => {
@@ -285,7 +285,7 @@ describe("홈", () => {
 
     await waitFor(() => expect(screen.getAllByTestId("day-cell")).toHaveLength(30));
     const cells = screen.getAllByTestId("day-cell");
-    expect(cells[0].props.style.backgroundColor).toBe(color.accentSoft); // 09-01 성공 → secured
+    expect(cells[0].props.style.backgroundColor).toBe(color.accentSecured); // 09-01 성공 → secured
     expect(cells[1].props.style.backgroundColor).toBe(color.negativeSoft); // 09-02 실패 → missed
     expect(cells[2].props.style.backgroundColor).toBe(color.fill); // 09-03 기록 없음 → pending
   });
