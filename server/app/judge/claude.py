@@ -3,7 +3,7 @@ import base64
 import anthropic
 
 from app.judge.base import Verdict
-from app.judge.prompt import VERDICT_TOOL, build_prompt
+from app.judge.prompt import SYSTEM_PROMPT, VERDICT_TOOL, build_user_text
 
 
 def parse_tool_response(content: list) -> Verdict:
@@ -34,6 +34,7 @@ class ClaudeJudge:
         message = await self._client.messages.create(
             model=self.model,
             max_tokens=256,
+            system=SYSTEM_PROMPT,
             tools=[VERDICT_TOOL],
             tool_choice={"type": "tool", "name": "report_verdict"},
             messages=[{
@@ -44,7 +45,7 @@ class ClaudeJudge:
                         "media_type": "image/jpeg",
                         "data": base64.b64encode(image).decode(),
                     }},
-                    {"type": "text", "text": build_prompt(activity, appeal_text)},
+                    {"type": "text", "text": build_user_text(activity, appeal_text)},
                 ],
             }],
         )

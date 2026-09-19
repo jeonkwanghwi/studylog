@@ -4,7 +4,7 @@ import json
 from openai import AsyncOpenAI
 
 from app.judge.base import Verdict
-from app.judge.prompt import build_prompt
+from app.judge.prompt import SYSTEM_PROMPT, build_user_text
 
 VERDICT_RESPONSE_FORMAT = {
     "type": "json_schema",
@@ -67,14 +67,14 @@ class OpenAIJudge:
             model=self.model,
             response_format=VERDICT_RESPONSE_FORMAT,
             **extra,
-            messages=[{
-                "role": "user",
-                "content": [
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": [
                     {"type": "image_url", "image_url": {
                         "url": f"data:image/jpeg;base64,{base64.b64encode(image).decode()}",
                     }},
-                    {"type": "text", "text": build_prompt(activity, appeal_text)},
-                ],
-            }],
+                    {"type": "text", "text": build_user_text(activity, appeal_text)},
+                ]},
+            ],
         )
         return parse_verdict(response.choices[0].message.content)
