@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://studylog:studylog@localhost:5432/studylog"
     jwt_secret: str
     jwt_days: int = 90
-    apple_bundle_id: str = "com.sagongtae.studylog"
+    apple_bundle_id: str = "com.kwanghwi.studylog"
     google_client_id: str = ""
     google_ios_client_id: str = ""
     google_android_client_id: str = ""

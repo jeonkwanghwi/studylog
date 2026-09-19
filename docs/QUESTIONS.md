@@ -71,7 +71,7 @@ Kakao Developers 의 **REST API 키**다. 앱에서는 네이티브 SDK 없이
 
 ## 3. 번들 ID — 확정됨
 
-**`com.sagongtae.studylog`** (iOS·Android 동일).
+**`com.kwanghwi.studylog`** (iOS·Android 동일).
 
 원래 `com.studylog.app` 으로 잡았는데 **Apple 에 이미 선점돼 있었다.** App ID 는
 전 세계에서 유일해야 해서 흔한 이름은 대부분 나가 있다. 도메인을 소유하지

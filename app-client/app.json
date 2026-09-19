@@ -9,7 +9,7 @@
     "ios": {
       "supportsTablet": true,
       "usesAppleSignIn": true,
-      "bundleIdentifier": "com.sagongtae.studylog",
+      "bundleIdentifier": "com.kwanghwi.studylog",
       "infoPlist": {
         "NSCameraUsageDescription": "공부 인증 사진을 찍습니다.",
         "NSAppTransportSecurity": {
@@ -24,7 +24,7 @@
       }
     },
     "android": {
-      "package": "com.sagongtae.studylog",
+      "package": "com.kwanghwi.studylog",
       "permissions": [
         "android.permission.CAMERA"
       ],
