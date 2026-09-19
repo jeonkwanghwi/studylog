@@ -123,3 +123,37 @@ class TestKakaoCallback:
         monkeypatch.setattr(httpx, "post", lambda *a, **k: called.append(a))
         client.get("/auth/kakao/callback?code=ABC123", follow_redirects=False)
         assert called == []
+
+
+class TestRefresh:
+    """토큰은 90일짜리인데 갱신 경로가 없었다. 매일 쓰던 사람도 90일째에
+    예고 없이 로그아웃된다."""
+
+    def test_유효한_토큰을_새_토큰으로_바꿔준다(self, client, auth):
+        r = client.post("/auth/refresh", headers=auth)
+        assert r.status_code == 200
+        assert r.json()["access_token"]
+        assert r.json()["user"]["id"]
+
+    def test_새_토큰으로_계속_쓸_수_있다(self, client, auth):
+        new = client.post("/auth/refresh", headers=auth).json()["access_token"]
+        me = client.get("/users/me", headers={"Authorization": f"Bearer {new}"})
+        assert me.status_code == 200
+
+    def test_로그인_없이는_갱신할_수_없다(self, client):
+        assert client.post("/auth/refresh").status_code == 401
+
+    def test_만료된_토큰으로는_갱신할_수_없다(self, client, auth, db):
+        # 갱신이 만료를 되살리는 수단이 되면 안 된다.
+        import jwt
+        from datetime import timedelta
+        from app.config import settings
+        from app.models import User
+        from app.time_utils import now_utc
+
+        user = db.query(User).one()
+        dead = jwt.encode(
+            {"sub": user.id, "exp": now_utc() - timedelta(seconds=1)},
+            settings.jwt_secret, algorithm="HS256")
+        r = client.post("/auth/refresh", headers={"Authorization": f"Bearer {dead}"})
+        assert r.status_code == 401

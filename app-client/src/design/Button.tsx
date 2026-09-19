@@ -5,39 +5,39 @@ import { Touchable } from "./Touchable";
 import { color, fonts, radius, space } from "./tokens";
 
 /**
- * 버튼은 전부 상자다. 글자만 떠 있으면 누를 수 있는 것인지 알 수 없다.
+ * 무게가 세 단계다. 전부 상자로 만들면 위계가 사라진다.
  *
  *   primary    이 화면에서 하려는 일. 화면당 하나. 채워진 강조색.
- *   secondary  할 수 있는 다른 일. 흰 면 + 진한 테두리.
- *   text       덜 중요한 행동(이의제기, 약관). 강조색 테두리와 글자.
- *   quiet      그냥 나가기(닫기, 취소). 상자 없이 흐린 글자 — 주된 행동과
- *              경쟁하면 안 되는 유일한 경우다.
+ *   secondary  할 수 있는 다른 일. 강조색의 옅은 면 + 강조색 글자.
+ *   text       덜 중요한 행동(이의제기, 약관). 강조색 글자만.
+ *   quiet      그냥 나가기(닫기, 취소). 흐린 글자만.
  *
- * 테두리색이 #8B95A1 인 이유: WCAG 1.4.11 은 버튼 같은 비텍스트 UI 요소에
- * 배경 대비 3.0 을 요구한다. 전에 쓰던 #E5E8EB 는 1.23 이라 흰 배경에
- * 묻혀서 "버튼이 없는 것처럼" 보였다. #8B95A1 은 3.04 다.
+ * secondary 가 중립 회색이 아니라 강조색 계열인 이유: 회색 채움(#F2F4F6)은
+ * 흰 배경 대비 1.10 이라 버튼이 없는 것처럼 보였다. 회색 테두리를 두르는
+ * 방법도 있지만 그러면 화면이 와이어프레임처럼 되고, 무엇보다 모든 버튼이
+ * 같은 무게가 되어 위계가 사라진다.
  */
 type Tone = "primary" | "secondary" | "text" | "quiet";
 
 export const TONE_SURFACE: Record<Tone, Record<string, unknown>> = {
   primary: { backgroundColor: color.accent },
-  secondary: { backgroundColor: color.bg, borderWidth: 1, borderColor: color.border },
-  text: { backgroundColor: color.bg, borderWidth: 1, borderColor: color.accent },
+  secondary: { backgroundColor: color.accentFill },
+  text: {},
   quiet: {},
 };
 
 export const TONE_LABEL: Record<Tone, Kind> = {
   primary: "text",     // 아래에서 흰색으로 덮는다
-  secondary: "text",
+  secondary: "accent",
   text: "accent",
   quiet: "muted",
 };
 
-/** quiet 만 상자가 아니다. */
+/** 면을 가진 것만 상자다. */
 const BOXED: Record<Tone, boolean> = {
   primary: true,
   secondary: true,
-  text: true,
+  text: false,
   quiet: false,
 };
 
@@ -91,7 +91,9 @@ export function Button({
           style={
             tone === "primary"
               ? { textAlign: "center", color: "#FFFFFF", fontFamily: fonts.BOLD }
-              : { textAlign: "center" }
+              : tone === "secondary"
+                ? { textAlign: "center", fontFamily: fonts.BOLD }
+                : { textAlign: "center" }
           }
         >
           {label}

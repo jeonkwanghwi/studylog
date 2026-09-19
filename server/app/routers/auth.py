@@ -9,7 +9,7 @@ from app.config import settings
 from app.db import get_db
 from app.models import User
 from app.schemas import LoginOut, SocialLoginIn
-from app.security import create_access_token
+from app.security import create_access_token, get_current_user
 
 router = APIRouter(tags=["auth"])
 
@@ -30,6 +30,23 @@ def kakao_callback(request: Request) -> RedirectResponse:
     query = urlencode(dict(request.query_params))
     target = f"{settings.app_scheme}://oauth"
     return RedirectResponse(f"{target}?{query}" if query else target, status_code=302)
+
+
+@router.post("/auth/refresh", response_model=LoginOut)
+def refresh_token(user: User = Depends(get_current_user)) -> LoginOut:
+    """아직 유효한 토큰을 더 긴 토큰으로 바꿔준다.
+
+    토큰은 90일짜리인데 갱신 경로가 없었다. 매일 쓰던 사람도 90일째에
+    예고 없이 로그아웃된다 — 출시 3개월 뒤 한꺼번에 터지는 종류의 문제다.
+
+    앱이 만료 60일 전부터 앱을 열 때마다 이걸 부른다. 그래서 두 달에 한 번만
+    앱을 열어도 로그인이 유지된다.
+
+    갱신에 별도 refresh token 을 쓰지 않는다. 우리에겐 토큰 폐기 수단이
+    아예 없어서, 둘로 나눠도 훔친 토큰을 막지 못한다 — 복잡도만 늘고
+    보안은 그대로다. 폐기가 필요해지면 그때 같이 설계한다.
+    """
+    return LoginOut(access_token=create_access_token(user.id), user=user)
 
 
 @router.post("/auth/social", response_model=LoginOut)

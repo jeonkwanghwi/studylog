@@ -16,7 +16,15 @@ import { color, space } from "./tokens";
  * 아이콘만 두지 않고 글자를 같이 둔다 — 화살표 하나가 무슨 뜻인지도
  * 배워야 아는 것이고, 44pt 터치 영역도 아이콘만으로는 작다.
  */
-export function BackButton({ label = "뒤로" }: { label?: string }) {
+export function BackButton({
+  label = "뒤로",
+  onDark = false,
+}: {
+  label?: string;
+  /** 카메라 같은 어두운 화면 위에서는 흰색으로 그린다. */
+  onDark?: boolean;
+}) {
+  const fg = onDark ? "#FFFFFF" : color.text;
   return (
     <Touchable
       accessibilityRole="button"
@@ -33,8 +41,10 @@ export function BackButton({ label = "뒤로" }: { label?: string }) {
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
-        <Ionicons name="chevron-back" size={22} color={color.text} />
-        <T variant="section">{label}</T>
+        <Ionicons name="chevron-back" size={22} color={fg} />
+        <T variant="section" style={onDark ? { color: fg } : undefined}>
+          {label}
+        </T>
       </View>
     </Touchable>
   );

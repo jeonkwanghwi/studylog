@@ -244,12 +244,9 @@ export default function Capture() {
                 position: "absolute",
                 top: insets.top + space.sm,
                 left: space.base,
-                backgroundColor: "rgba(255,255,255,0.92)",
-                borderRadius: radius.pill,
-                paddingHorizontal: space.sm,
               }}
             >
-              <BackButton label="닫기" />
+              <BackButton label="닫기" onDark />
             </View>
           )}
         </View>

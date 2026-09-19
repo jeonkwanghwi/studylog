@@ -162,22 +162,27 @@ describe("버튼 톤", () => {
     return (hi + 0.05) / (lo + 0.05);
   };
 
-  it("테두리가 배경에서 실제로 보인다 — WCAG 1.4.11 의 3.0 기준", () => {
-    // 전에 쓰던 #E5E8EB 는 대비 1.23 이라 흰 배경에 묻혀서 "버튼이 없는
-    // 것처럼" 보였다. 눈으로는 "좀 흐리네" 로만 보여서 놓치기 쉽다.
-    expect(contrast(color.border, color.bg)).toBeGreaterThanOrEqual(3.0);
-    expect(TONE_SURFACE.secondary.borderColor).toBe(color.border);
-    expect(TONE_SURFACE.text.borderColor).toBe(color.accent);
+  it("이차 버튼이 배경에 묻히지 않는다", () => {
+    // 중립 회색(#F2F4F6)은 흰 배경 대비 1.10 이라 버튼이 없는 것처럼
+    // 보였다. 강조색 계열 면은 밝기 차이도 더 크고 색상까지 달라서
+    // 테두리 없이 보인다.
+    expect(contrast(color.accentFill, color.bg)).toBeGreaterThan(
+      contrast(color.fill, color.bg)
+    );
+    // 그 위의 글자는 읽혀야 한다.
+    expect(contrast(color.accent, color.accentFill)).toBeGreaterThanOrEqual(3.0);
   });
 
-  it("quiet 만 상자가 아니다", () => {
-    // 글자만 떠 있으면 누를 수 있는 것인지 알 수 없다. 닫기·취소는
-    // 주된 행동과 경쟁하면 안 되는 유일한 예외다.
-    for (const tone of ["primary", "secondary", "text"] as const) {
-      expect(TONE_SURFACE[tone].backgroundColor).toBeTruthy();
-    }
+  it("전부 상자로 만들지 않는다 — 그러면 위계가 사라진다", () => {
+    expect(TONE_SURFACE.primary.backgroundColor).toBe(color.accent);
+    expect(TONE_SURFACE.secondary.backgroundColor).toBe(color.accentFill);
+    // 덜 중요한 행동과 해제는 면이 없다.
+    expect(TONE_SURFACE.text.backgroundColor).toBeUndefined();
     expect(TONE_SURFACE.quiet.backgroundColor).toBeUndefined();
-    expect(TONE_SURFACE.quiet.borderWidth).toBeUndefined();
+    // 회색 테두리를 두르지 않는다.
+    for (const t of ["primary", "secondary", "text", "quiet"] as const) {
+      expect(TONE_SURFACE[t].borderWidth).toBeUndefined();
+    }
   });
 
   it("text 는 누를 수 있다는 것이 보이게 강조색을 쓴다", async () => {

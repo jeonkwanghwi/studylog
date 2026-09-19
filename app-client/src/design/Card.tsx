@@ -31,14 +31,10 @@ export function Card({
   return (
     <View
       style={[
-        {
-          backgroundColor: color.bg,
-          borderRadius: radius.card,
-          padding: space.lg,
-        },
+        { borderRadius: radius.card, padding: space.lg },
         elevation === "raised"
-          ? RAISED
-          : { borderWidth: 1, borderColor: color.line },
+          ? { backgroundColor: color.bg, ...RAISED }
+          : { backgroundColor: color.fill },
         style,
       ]}
       {...rest}
