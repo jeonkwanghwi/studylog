@@ -72,6 +72,15 @@ export function useInvalidateAll() {
     ]);
 }
 
+export function useSetNickname() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (nickname: string) =>
+      api.patch<UserOut>("/users/me/nickname", { nickname }),
+    onSuccess: (user) => queryClient.setQueryData(keys.me, user),
+  });
+}
+
 export function useSetGoal() {
   const queryClient = useQueryClient();
   return useMutation({

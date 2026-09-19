@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import User
-from app.schemas import GoalIn, PushTokenIn, UserOut
+from app.schemas import GoalIn, NicknameIn, PushTokenIn, UserOut
 from app.security import get_current_user
 
 router = APIRouter(prefix="/users/me", tags=["users"])
@@ -22,6 +22,21 @@ def change_goal(
 ) -> User:
     """변경은 다음 04:00 정산 직후에 적용된다(Task 15). 즉시 반영하지 않는다."""
     user.pending_goal_minutes = body.minutes
+    db.commit()
+    return user
+
+
+@router.patch("/nickname", response_model=UserOut)
+def change_nickname(
+    body: NicknameIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> User:
+    """목표와 달리 즉시 반영한다 — 이름은 정산과 아무 상관이 없다."""
+    nickname = body.nickname.strip()
+    if not nickname:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "닉네임을 입력해주세요")
+    user.nickname = nickname
     db.commit()
     return user
 

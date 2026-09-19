@@ -29,3 +29,39 @@ def test_push_token_is_saved(client, auth, db):
 
 def test_goal_change_requires_auth(client):
     assert client.patch("/users/me/goal", json={"minutes": 30}).status_code == 401
+
+
+# 소셜 로그인은 믿을 만한 닉네임을 주지 않는다. 로그인 직후에는 기본값이
+# 들어가고 실제 이름은 온보딩에서 받는다 — 아래가 그 저장 경로다.
+
+
+def test_nickname_applies_immediately(client, auth, db):
+    r = client.patch("/users/me/nickname", headers=auth, json={"nickname": "광휘"})
+    assert r.status_code == 200
+    assert r.json()["nickname"] == "광휘"
+    # 목표와 달리 pending 이 아니다 — 이름은 정산과 아무 상관이 없다.
+    assert db.query(User).one().nickname == "광휘"
+
+
+def test_nickname_is_trimmed(client, auth):
+    r = client.patch("/users/me/nickname", headers=auth, json={"nickname": "  광휘  "})
+    assert r.json()["nickname"] == "광휘"
+
+
+def test_blank_nickname_is_rejected(client, auth):
+    # 피드에 빈 이름이 뜨면 누가 올린 인증인지 알 수 없다.
+    assert client.patch("/users/me/nickname", headers=auth,
+                        json={"nickname": "   "}).status_code == 422
+    assert client.patch("/users/me/nickname", headers=auth,
+                        json={"nickname": ""}).status_code == 422
+
+
+def test_nickname_length_is_capped(client, auth):
+    # nickname 컬럼이 String(32) 다. 여기서 막지 않으면 DB 에서 터진다.
+    assert client.patch("/users/me/nickname", headers=auth,
+                        json={"nickname": "가" * 33}).status_code == 422
+
+
+def test_nickname_change_requires_auth(client):
+    assert client.patch("/users/me/nickname",
+                        json={"nickname": "남"}).status_code == 401

@@ -51,6 +51,12 @@ class GoalIn(BaseModel):
     minutes: int = Field(ge=1, le=1440)
 
 
+class NicknameIn(BaseModel):
+    # 모델의 nickname 컬럼이 String(32) 이다. 여기서 막지 않으면 DB 에서
+    # 잘리거나 터진다. 공백만 들어오는 것도 막는다 — 피드에 빈 이름이 뜬다.
+    nickname: str = Field(min_length=1, max_length=32)
+
+
 class PushTokenIn(BaseModel):
     token: str = Field(min_length=1, max_length=255)
 
