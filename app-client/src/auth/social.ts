@@ -1,8 +1,11 @@
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as AuthSession from "expo-auth-session";
+import * as Linking from "expo-linking";
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+
+import { apiBaseUrl } from "../config";
 
 // 리다이렉트로 브라우저가 열렸다가 앱으로 돌아올 때 대기 중인 프라미스를
 // 정리해줘야 한다 — 안 하면 두 번째 로그인 시도부터 응답이 오지 않는다.
@@ -59,38 +62,60 @@ const KAKAO_DISCOVERY = {
 };
 
 /**
- * 카카오는 네이티브 SDK 없이 expo-auth-session 의 authorization code flow로 받는다.
- * scope 에 openid 가 빠지면 access_token 만 오고 id_token 이 없어 서버가
- * 검증할 것이 없어진다. code 를 받은 뒤 token 엔드포인트와 교환해서
- * id_token 을 꺼낸다 — 교환에 실패하거나 id_token 이 비어 있으면
- * idToken 은 null 로 남겨 화면이 null 을 서버로 보내지 않게 한다.
+ * 카카오 로그인. 인가 코드를 받아 id_token 으로 교환한다.
+ *
+ * 두 개의 주소가 서로 다른 역할을 한다. 헷갈리면 조용히 안 돌아온다.
+ *
+ *   redirectUri  — 카카오에게 주는 주소. 콘솔에 등록된 문자열과 한 글자도
+ *                  달라선 안 되고(다르면 KOE006), 카카오는 http/https 만
+ *                  받는다. 그래서 우리 서버의 콜백이다.
+ *   returnUrl    — 브라우저 세션이 "이제 앱으로 돌아가라"고 판단하는 주소.
+ *                  iOS 의 인증 세션은 **커스텀 스킴만 가로챌 수 있다.**
+ *                  서버 주소를 주면 영원히 안 돌아온다.
+ *
+ * 서버 콜백은 받은 쿼리를 그대로 앱 스킴으로 302 돌려보내는 일만 한다.
+ * 코드 교환은 여기서 PKCE 로 한다 — code_verifier 는 이 기기에만 있고,
+ * 그래서 코드가 새어도 남이 토큰으로 바꿀 수 없다.
  */
-export function useKakaoIdToken() {
+const KAKAO_RETURN_URL = "studylog://oauth";
+
+export function useKakaoIdToken(): IdTokenHook {
   const clientId = process.env.EXPO_PUBLIC_KAKAO_REST_API_KEY ?? "";
   const configured = clientId.length > 0;
-  const redirectUri = AuthSession.makeRedirectUri();
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
+  const redirectUri = `${apiBaseUrl()}/auth/kakao/callback`;
+  const [request] = AuthSession.useAuthRequest(
     { clientId, scopes: ["openid"], redirectUri },
     KAKAO_DISCOVERY
   );
   const [idToken, setIdToken] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (response?.type !== "success" || !request) return;
-    AuthSession.exchangeCodeAsync(
+  const promptAsync = useCallback(async () => {
+    if (!request) return null;
+
+    const authUrl = await request.makeAuthUrlAsync(KAKAO_DISCOVERY);
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, KAKAO_RETURN_URL);
+    if (result.type !== "success") return null;   // 취소는 정상적인 선택이다
+
+    const { queryParams } = Linking.parse(result.url);
+    const code = typeof queryParams?.code === "string" ? queryParams.code : null;
+    if (!code) return null;
+
+    const token = await AuthSession.exchangeCodeAsync(
       {
         clientId,
-        code: response.params.code,
-        redirectUri,
+        code,
+        redirectUri,   // 인가 때 보낸 것과 같아야 한다
         extraParams: request.codeVerifier
           ? { code_verifier: request.codeVerifier }
           : undefined,
       },
       KAKAO_DISCOVERY
-    ).then((token) => {
-      if (token.idToken) setIdToken(token.idToken);
-    });
-  }, [response, request, clientId, redirectUri]);
+    );
+    // id_token 이 없으면 서버가 검증할 것이 없다. null 로 두어 빈 토큰을
+    // 서버로 보내지 않는다 (카카오 콘솔에서 OpenID Connect 가 꺼져 있으면 이렇게 된다).
+    if (token.idToken) setIdToken(token.idToken);
+    return null;
+  }, [request, clientId, redirectUri]);
 
   return { request: configured ? request : null, promptAsync, idToken };
 }

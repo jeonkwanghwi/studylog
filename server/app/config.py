@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     google_ios_client_id: str = ""
     google_android_client_id: str = ""
     kakao_rest_api_key: str = ""   # 카카오 OIDC 의 audience
+    # 카카오 콜백이 되돌려보낼 앱 스킴. app.json 의 expo.scheme 과 같아야 한다.
+    app_scheme: str = "studylog"
 
     # 스토리지
     s3_bucket: str = "studylog-photos"

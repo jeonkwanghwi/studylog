@@ -95,3 +95,31 @@ def test_google_audience_skips_unset_platforms(monkeypatch):
     monkeypatch.setattr(verifiers.settings, "google_android_client_id", "")
 
     assert verifiers._AUDIENCE["google"]() == ["web.apps.googleusercontent.com"]
+
+
+class TestKakaoCallback:
+    """카카오는 앱 스킴을 리다이렉트로 등록할 수 없어 서버를 한 번 거친다."""
+
+    def test_인가코드를_앱_스킴으로_넘긴다(self, client):
+        r = client.get("/auth/kakao/callback?code=ABC123&state=xyz",
+                       follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "studylog://oauth?code=ABC123&state=xyz"
+
+    def test_실패도_그대로_넘긴다(self, client):
+        # 여기서 삼키면 앱은 왜 로그인이 안 됐는지 영원히 알 수 없다.
+        r = client.get("/auth/kakao/callback?error=access_denied",
+                       follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "studylog://oauth?error=access_denied"
+
+    def test_코드를_서버가_교환하지_않는다(self, client, monkeypatch):
+        """code_verifier 는 앱에만 있어야 한다. 서버가 교환을 시도하면
+        그 비밀이 네트워크를 한 번 더 건너고, 서버가 앱을 대신해 토큰을
+        받을 수 있게 된다."""
+        import httpx
+
+        called = []
+        monkeypatch.setattr(httpx, "post", lambda *a, **k: called.append(a))
+        client.get("/auth/kakao/callback?code=ABC123", follow_redirects=False)
+        assert called == []
