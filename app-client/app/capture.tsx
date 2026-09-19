@@ -19,7 +19,10 @@ type Phase =
   | { name: "ready" }
   | { name: "uploading" }
   | { name: "judged"; result: JudgeResultOut }
-  | { name: "error"; message: string; notFound: boolean };
+  // uri 를 들고 있어야 "다시 시도"가 같은 사진을 다시 올린다. 사진은 이미
+  // 찍혔고 실패한 것은 업로드다 — 다시 찍게 하면 유저 시간을 뺏고,
+  // 종료 샷이면 그 사이 회수 시각이 다가온다.
+  | { name: "error"; message: string; notFound: boolean; uri?: string };
 
 const SHUTTER_SIZE = 76;
 
@@ -52,11 +55,10 @@ export default function Capture() {
     navigation.setOptions({ gestureEnabled: !blockExit });
   }, [navigation, blockExit]);
 
-  async function shoot() {
+  async function send(uri: string) {
     setPhase({ name: "uploading" });
     try {
-      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.8 });
-      const result = await uploadPhoto(kind, photo?.uri ?? "", { sessionId, activity });
+      const result = await uploadPhoto(kind, uri, { sessionId, activity });
       await invalidate();
       if (result.result === "pass") haptic.success();
       else haptic.warning();
@@ -71,9 +73,35 @@ export default function Capture() {
           notFound: true,
         });
       } else {
-        setPhase({ name: "error", message: (error as Error).message, notFound: false });
+        setPhase({
+          name: "error",
+          message: (error as Error).message,
+          notFound: false,
+          uri,   // 같은 사진으로 다시 시도할 수 있게 들고 있는다
+        });
       }
     }
+  }
+
+  async function shoot() {
+    // 에러 화면에서는 CameraView 가 렌더되지 않아 ref 가 비어 있다. 그때
+    // 찍으려 들면 uri 없이 업로드하게 되고, 네이티브가 없는 경로를 열려다
+    // 앱이 통째로 죽는다.
+    if (!cameraRef.current) {
+      setPhase({ name: "ready" });
+      return;
+    }
+    setPhase({ name: "uploading" });
+    let uri: string;
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+      if (!photo?.uri) throw new Error("사진을 만들지 못했습니다.");
+      uri = photo.uri;
+    } catch (error) {
+      setPhase({ name: "error", message: (error as Error).message, notFound: false });
+      return;
+    }
+    await send(uri);
   }
 
   if (!permission?.granted) {
@@ -160,7 +188,11 @@ export default function Capture() {
             {remaining !== null && ` ${remaining}분 안에 종료하지 않으면 오늘 기록이 사라집니다.`}
           </T>
         )}
-        <Button label="다시 시도" tone="primary" onPress={shoot} />
+        <Button
+          label="다시 시도"
+          tone="primary"
+          onPress={() => (phase.uri ? send(phase.uri) : shoot())}
+        />
         {!isEnd && <Button label="닫기" tone="text" onPress={() => router.back()} />}
       </Appear>
     );

@@ -80,8 +80,37 @@ async def judge_photo(
         )
 
 
+@dataclass(frozen=True)
+class BrokenJudge:
+    """판정기를 만들지 못했을 때 자리를 대신한다.
+
+    부르면 던지고, judge_photo 가 그것을 관대 통과로 흡수한다. 이 경로가
+    없으면 설정이 틀린 순간 /sessions/start 가 통째로 500 이 되어 유저가
+    공부를 시작조차 못 한다 — AI 장애로 공부 시간이 날아가는 것이 오탐
+    통과보다 나쁘다는 원칙이 여기에도 적용돼야 한다.
+
+    다만 조용히 넘기지는 않는다. 장애는 지나가지만 설정 오류는 영원히
+    남아서, 눈치채지 못하면 모든 사진이 공짜로 통과한다.
+    """
+
+    name: str = "broken"
+    model: str = "-"
+    reason: str = ""
+
+    async def judge(self, image: bytes, activity: str,
+                    appeal_text: str | None = None) -> Verdict:
+        raise RuntimeError(f"판정기를 만들지 못했습니다: {self.reason}")
+
+
 def get_judge() -> JudgeProvider:
-    """FastAPI 의존성. 프로바이더는 Task 6에서 등록한다."""
+    """FastAPI 의존성. 판정기를 만든다."""
     from app.judge.registry import build_provider
 
-    return build_provider(settings.judge_provider, settings.judge_model)
+    try:
+        return build_provider(settings.judge_provider, settings.judge_model)
+    except Exception as exc:
+        logger.error(
+            "판정기 생성 실패 — 모든 사진이 관대 통과로 처리된다 "
+            "(provider=%s): %r", settings.judge_provider, exc
+        )
+        return BrokenJudge(reason=repr(exc))

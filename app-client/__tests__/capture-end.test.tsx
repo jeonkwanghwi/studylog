@@ -13,10 +13,23 @@ jest.mock("expo-router", () => ({
   useNavigation: () => ({ setOptions: mockSetOptions }),
 }));
 
-jest.mock("expo-camera", () => ({
-  CameraView: ({ children }: { children: React.ReactNode }) => children ?? null,
-  useCameraPermissions: () => [{ granted: true }, jest.fn()],
-}));
+// 목이 ref 를 넘기지 않으면 takePictureAsync 경로가 한 번도 실행되지 않는다.
+// 실제로 "사진이 없는 채로 업로드해서 네이티브가 죽는" 버그를 이 목이
+// 가리고 있었다.
+jest.mock("expo-camera", () => {
+  const { forwardRef, useImperativeHandle } = require("react");
+  return {
+    CameraView: forwardRef(
+      ({ children }: { children?: React.ReactNode }, ref: unknown) => {
+        useImperativeHandle(ref, () => ({
+          takePictureAsync: async () => ({ uri: "file:///tmp/shot.jpg" }),
+        }));
+        return children ?? null;
+      }
+    ),
+    useCameraPermissions: () => [{ granted: true }, jest.fn()],
+  };
+});
 
 const wrap = () =>
   render(
@@ -191,5 +204,24 @@ describe("종료 샷 실패", () => {
     fireEvent.press(screen.getByText("다시 시도"));
     await waitFor(() => expect(screen.getByText(/공부 종료됨/)).toBeTruthy());
     expect(xhr.sent).toHaveLength(2);
+  });
+
+  it("재시도는 사진을 다시 찍지 않고 같은 사진을 다시 올린다", async () => {
+    // 사진은 이미 찍혔고 실패한 것은 업로드다. 다시 찍게 하면 유저 시간을
+    // 뺏고, 종료 샷이면 그 사이 회수 시각이 다가온다.
+    xhr.failOnce();
+    xhr.replyOnce(200, {
+      result: "pass", photo_id: "p2", reason: "", session: null,
+    });
+
+    await wrap();
+    fireEvent.press(screen.getByText("촬영"));
+    await waitFor(() => expect(screen.getByText("다시 시도")).toBeTruthy());
+
+    fireEvent.press(screen.getByText("다시 시도"));
+    await waitFor(() => expect(xhr.sent).toHaveLength(2));
+
+    // 두 번 다 같은 사진이어야 한다 — 목 카메라는 항상 같은 uri 를 준다.
+    expect(screen.queryByText("촬영")).toBeNull();   // 카메라로 돌아가지 않았다
   });
 });

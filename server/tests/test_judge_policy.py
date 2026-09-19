@@ -117,3 +117,34 @@ def test_sdk_재시도는_꺼져있다():
 
     assert OpenAIJudge("k", "gpt-4o-mini")._client.max_retries == 0
     assert ClaudeJudge("k", "claude-haiku-4-5")._client.max_retries == 0
+
+
+def test_쓰지_않는_프로바이더의_SDK_가_없어도_동작한다(monkeypatch):
+    """전에는 registry 가 모든 프로바이더를 최상단에서 import 했다.
+    그래서 openai 패키지가 없는 서버에서 claude 를 쓰는데도 앱 전체가
+    죽었다 — 실제로 /sessions/start 가 통째로 500 이 났다."""
+    import sys
+    from app.judge.registry import build_provider
+
+    # openai 모듈이 없는 상황을 흉내낸다.
+    monkeypatch.setitem(sys.modules, "openai", None)
+    provider = build_provider("claude", "claude-haiku-4-5")
+    assert provider.name == "claude"
+
+
+def test_판정기를_못_만들면_막지_않고_통과시킨다(monkeypatch):
+    """설정이 틀렸다고 유저가 공부를 시작조차 못 하면 안 된다."""
+    from app.judge import base
+
+    monkeypatch.setattr(base.settings, "judge_provider", "존재하지않음")
+    judge = base.get_judge()
+    assert isinstance(judge, base.BrokenJudge)
+
+
+async def test_BrokenJudge_는_관대_통과로_흡수된다(jpeg):
+    from app.judge.base import BrokenJudge, is_pass, judge_photo
+    from app.config import settings
+
+    verdict = await judge_photo(BrokenJudge(reason="테스트"), jpeg, "공부")
+    assert is_pass(verdict, settings.judge_fail_confidence)
+    assert verdict.confidence == 0.0

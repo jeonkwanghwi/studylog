@@ -10,10 +10,23 @@ jest.mock("expo-router", () => ({
   useNavigation: () => ({ setOptions: jest.fn() }),
 }));
 
-jest.mock("expo-camera", () => ({
-  CameraView: ({ children }: { children: React.ReactNode }) => children ?? null,
-  useCameraPermissions: () => [{ granted: true }, jest.fn()],
-}));
+// 목이 ref 를 넘기지 않으면 takePictureAsync 경로가 한 번도 실행되지 않는다.
+// 실제로 "사진이 없는 채로 업로드해서 네이티브가 죽는" 버그를 이 목이
+// 가리고 있었다.
+jest.mock("expo-camera", () => {
+  const { forwardRef, useImperativeHandle } = require("react");
+  return {
+    CameraView: forwardRef(
+      ({ children }: { children?: React.ReactNode }, ref: unknown) => {
+        useImperativeHandle(ref, () => ({
+          takePictureAsync: async () => ({ uri: "file:///tmp/shot.jpg" }),
+        }));
+        return children ?? null;
+      }
+    ),
+    useCameraPermissions: () => [{ granted: true }, jest.fn()],
+  };
+});
 
 const wrap = (ui: React.ReactElement) =>
   render(

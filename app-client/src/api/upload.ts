@@ -24,6 +24,11 @@ export async function uploadPhoto(
   uri: string,
   { sessionId, activity }: UploadOptions = {}
 ): Promise<JudgeResultOut> {
+  // 빈 경로로 파일 파트를 만들면 네이티브가 그 파일을 열려다 앱을 죽인다.
+  // JS 예외로 바꿔서 화면이 에러를 보여줄 수 있게 한다.
+  if (!uri) {
+    throw new Error("사진이 없습니다. 다시 찍어주세요.");
+  }
   if (kind === "end" && !sessionId) {
     throw new Error("종료 샷에는 세션 id 가 필요합니다.");
   }
