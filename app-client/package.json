@@ -32,6 +32,7 @@
     "@testing-library/react-native": "^14.0.1",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
+    "eas-cli": "^24.7.0",
     "jest": "^30.5.1",
     "jest-expo": "^57.0.5",
     "msw": "^2.15.0",
