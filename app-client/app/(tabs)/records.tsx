@@ -7,6 +7,7 @@ import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { LoadFailed } from "../../src/design/LoadFailed";
 import { ListSkeleton } from "../../src/design/Skeleton";
+import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
 import { color, space } from "../../src/design/tokens";
 import { RESTORE_COST, formatWon } from "../../src/money/format";
@@ -20,6 +21,7 @@ const LABEL: Record<DailyRecordOut["result"], string> = {
 };
 
 export default function Records() {
+  const screenPadding = useScreenPadding();
   const records = useRecords();
   const me = useMe();
   const balance = me.data?.credit_balance ?? 0;
@@ -37,7 +39,7 @@ export default function Records() {
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: space.lg, paddingTop: space.huge, gap: space.md }}
+      contentContainerStyle={{ padding: space.lg, gap: space.md, ...screenPadding }}
       refreshControl={
         <RefreshControl
           refreshing={records.isFetching && !records.isLoading}

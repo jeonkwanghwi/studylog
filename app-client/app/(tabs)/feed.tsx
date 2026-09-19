@@ -9,6 +9,7 @@ import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { LoadFailed } from "../../src/design/LoadFailed";
 import { ListSkeleton } from "../../src/design/Skeleton";
+import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
 import { Touchable } from "../../src/design/Touchable";
 import { color, radius, space } from "../../src/design/tokens";
@@ -23,6 +24,7 @@ const RESULT_LABEL: Record<"success" | "passed" | "failed", string> = {
 };
 
 export default function Feed() {
+  const screenPadding = useScreenPadding();
   const groups = useGroups();
   const list = groups.data ?? [];
   const [selected, setSelected] = useState<string | undefined>();
@@ -52,7 +54,7 @@ export default function Feed() {
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: space.xl, paddingTop: space.huge, gap: space.base }}
+      contentContainerStyle={{ padding: space.xl, gap: space.base, ...screenPadding }}
       refreshControl={
         <RefreshControl
           refreshing={feed.isFetching}

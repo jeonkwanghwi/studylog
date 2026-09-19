@@ -1,3 +1,5 @@
+import { File } from "expo-file-system";
+
 import { api } from "./client";
 import type { JudgeResultOut } from "./types";
 
@@ -13,6 +15,12 @@ export type UploadOptions = {
 /**
  * 사진을 올리고 판정 결과를 받는다. 서버가 같은 요청 안에서 AI 판정까지
  * 끝내므로 응답이 곧 결과다 — 폴링할 것이 없다.
+ *
+ * 파일은 `{ uri, name, type }` 객체가 아니라 expo-file-system 의 File 로
+ * 붙인다. Expo 가 fetch 를 자체 구현으로 대체했는데 그쪽은 RN 의 uri 관용구를
+ * 모르고 "Unsupported FormDataPart implementation" 으로 던진다. File 은
+ * Blob 을 구현하므로 그대로 받아들여지고, name 이 있어서 서버가 파일 파트로
+ * 읽을 수 있다.
  */
 export async function uploadPhoto(
   kind: ShotKind,
@@ -28,11 +36,7 @@ export async function uploadPhoto(
   }
 
   const form = new FormData();
-  form.append("image", {
-    uri,
-    name: "shot.jpg",
-    type: "image/jpeg",
-  } as unknown as Blob);
+  form.append("image", new File(uri) as unknown as Blob);
   if (kind === "start") form.append("activity", activity!.trim());
 
   const path = kind === "start" ? "/sessions/start" : `/sessions/${sessionId}/end`;

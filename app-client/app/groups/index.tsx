@@ -8,6 +8,7 @@ import { keys, useGroups } from "../../src/api/hooks";
 import type { GroupOut } from "../../src/api/types";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
+import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
 import { Toast, useToast } from "../../src/design/Toast";
 import { Touchable } from "../../src/design/Touchable";
@@ -26,6 +27,7 @@ const inputStyle = {
 };
 
 export default function Groups() {
+  const screenPadding = useScreenPadding();
   const groups = useGroups();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
@@ -82,7 +84,7 @@ export default function Groups() {
     <ScrollView
       keyboardShouldPersistTaps="handled"
       automaticallyAdjustKeyboardInsets
-      contentContainerStyle={{ padding: space.xl, paddingTop: space.huge, gap: space.xl }}
+      contentContainerStyle={{ padding: space.xl, gap: space.xl, ...screenPadding }}
     >
       <T variant="title">그룹</T>
 

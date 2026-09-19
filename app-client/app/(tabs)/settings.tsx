@@ -8,12 +8,14 @@ import { useAuth } from "../../src/auth/useAuth";
 import { GOAL_MAX_MINUTES, GOAL_MIN_MINUTES } from "../../src/config";
 import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
+import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
 import { Toast, useToast } from "../../src/design/Toast";
 import { color, radius, space, type } from "../../src/design/tokens";
 import { registerPushToken } from "../../src/notifications/register";
 
 export default function Settings() {
+  const screenPadding = useScreenPadding();
   const toast = useToast();
   const me = useMe();
   const setGoal = useSetGoal();
@@ -52,7 +54,7 @@ export default function Settings() {
   return (
     <>
     <ScrollView
-      contentContainerStyle={{ padding: space.lg, paddingTop: space.huge, gap: space.xl }}
+      contentContainerStyle={{ padding: space.lg, gap: space.xl, ...screenPadding }}
     >
       <T variant="title">설정</T>
 

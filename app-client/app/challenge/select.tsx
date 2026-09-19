@@ -9,6 +9,7 @@ import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { ListSkeleton } from "../../src/design/Skeleton";
+import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
 import { color, space } from "../../src/design/tokens";
 import { formatWon } from "../../src/money/format";
@@ -18,6 +19,7 @@ const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 30_000;
 
 export default function Select() {
+  const screenPadding = useScreenPadding();
   const products = useProducts();
   const me = useMe();
   const invalidate = useInvalidateAll();
@@ -153,7 +155,7 @@ export default function Select() {
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: space.lg, paddingTop: space.huge, gap: space.base }}
+      contentContainerStyle={{ padding: space.lg, gap: space.base, ...screenPadding }}
     >
       <T variant="body" kind="sub">
         참가비를 먼저 내고, 목표를 채운 날마다 하루치를 크레딧으로 돌려받습니다.

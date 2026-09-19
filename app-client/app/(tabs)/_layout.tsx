@@ -30,6 +30,9 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
+        // 'shift' 는 탭 순서대로 화면이 좌우로 밀린다 — 어느 방향으로
+        // 이동했는지가 보인다. 'fade' 는 방향 정보 없이 깜빡이기만 한다.
+        animation: "shift",
         tabBarActiveTintColor: color.accent,
         tabBarInactiveTintColor: color.textMuted,
         title: TITLES[route.name],

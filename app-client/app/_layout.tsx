@@ -8,6 +8,7 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { useEffect } from "react";
 import { AppState } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ApiError } from "../src/api/client";
 import { clearToken } from "../src/auth/storage";
@@ -56,6 +57,7 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
+      <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <Stack
           screenOptions={{
@@ -77,6 +79,7 @@ export default function RootLayout() {
           <Stack.Screen name="groups/index" />
         </Stack>
       </QueryClientProvider>
+      </SafeAreaProvider>
     </ErrorBoundary>
   );
 }

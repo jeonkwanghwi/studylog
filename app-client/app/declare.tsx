@@ -3,6 +3,7 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Platform, TextInput, View } from "react-native";
 
 import { Button } from "../src/design/Button";
+import { useScreenPadding } from "../src/design/safeArea";
 import { T } from "../src/design/Text";
 import { Touchable } from "../src/design/Touchable";
 import { color, radius, space, type } from "../src/design/tokens";
@@ -14,13 +15,14 @@ const MAX = 100;
 const SUGGESTIONS = ["공부", "책읽기", "운동"];
 
 export default function Declare() {
+  const screenPadding = useScreenPadding();
   const [activity, setActivity] = useState("");
   const value = activity.trim();
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={{ flex: 1, padding: space.xl, paddingTop: space.huge, gap: space.lg }}
+      style={{ flex: 1, padding: space.xl, gap: space.lg, ...screenPadding }}
     >
       <T variant="title">오늘 뭐 할 건가요?</T>
       <T variant="body" kind="sub">

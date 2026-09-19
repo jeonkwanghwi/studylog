@@ -8,6 +8,7 @@ import type { JudgeResultOut } from "../../src/api/types";
 import { Appear } from "../../src/design/Appear";
 import { Button } from "../../src/design/Button";
 import { haptic } from "../../src/design/motion";
+import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
 import { color, radius, space, type } from "../../src/design/tokens";
 
@@ -18,6 +19,7 @@ type Phase =
   | { name: "refused"; detail: string };
 
 export default function Appeal() {
+  const screenPadding = useScreenPadding();
   const { photoId } = useLocalSearchParams<{ photoId: string }>();
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>({ name: "writing" });
@@ -96,7 +98,7 @@ export default function Appeal() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={{ flex: 1, padding: space.xl, paddingTop: space.huge, gap: space.lg }}
+      style={{ flex: 1, padding: space.xl, gap: space.lg, ...screenPadding }}
     >
       <T variant="title">이의제기</T>
       <T variant="body" kind="sub">

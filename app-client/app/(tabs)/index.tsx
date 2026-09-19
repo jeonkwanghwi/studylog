@@ -10,6 +10,7 @@ import { Card } from "../../src/design/Card";
 import { DayGrid, isoDateAtOffset, type Mark } from "../../src/design/DayGrid";
 import { LoadFailed } from "../../src/design/LoadFailed";
 import { ScreenSkeleton } from "../../src/design/Skeleton";
+import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
 import { color, space } from "../../src/design/tokens";
 import { formatWon } from "../../src/money/format";
@@ -45,6 +46,7 @@ function dayMarks(records: DailyRecordOut[], challenge: ChallengeOut): Mark[] {
 }
 
 export default function Home() {
+  const screenPadding = useScreenPadding();
   const me = useMe();
   const session = useCurrentSession();
   const challenge = useCurrentChallenge();
@@ -93,7 +95,7 @@ export default function Home() {
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: space.lg, paddingTop: space.huge, gap: space.xl }}
+      contentContainerStyle={{ padding: space.lg, gap: space.xl, ...screenPadding }}
       refreshControl={
         <RefreshControl
           refreshing={records.isFetching && !records.isLoading}
