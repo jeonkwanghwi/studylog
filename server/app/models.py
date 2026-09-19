@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, date as Date
 from datetime import datetime
 
-from sqlalchemy import (JSON, Date as SADate, DateTime, Float, ForeignKey,
+from sqlalchemy import (Boolean, JSON, Date as SADate, DateTime, Float, ForeignKey,
                         Index, Integer, String, Text, TypeDecorator,
                         UniqueConstraint, text)
 from sqlalchemy.orm import Mapped, mapped_column
@@ -51,6 +51,12 @@ class User(Base):
     nickname: Mapped[str] = mapped_column(String(32))
     daily_goal_minutes: Mapped[int] = mapped_column(Integer, default=60)
     pending_goal_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 목표 변경은 다음 04:00 정산 뒤에 적용된다 — 밤에 목표를 낮춰 페이백을
+    # 타는 것을 막는 규칙이다. 그런데 온보딩의 첫 설정까지 미뤄지면 첫날은
+    # 고르지도 않은 기본값 60분으로 돌아간다. 첫 설정에는 미룰 이유가 없다
+    # (아직 오늘 기록도, 낮출 목표도 없다). 이 판단은 서버만 할 수 있어야
+    # 한다 — 앱이 "첫 설정입니다"라고 주장하게 두면 그게 곧 우회로다.
+    goal_initialized: Mapped[bool] = mapped_column(Boolean, default=False)
     streak_count: Mapped[int] = mapped_column(Integer, default=0)
     credit_balance: Mapped[int] = mapped_column(Integer, default=0)   # 원 단위
     expo_push_token: Mapped[str | None] = mapped_column(String(255), nullable=True)

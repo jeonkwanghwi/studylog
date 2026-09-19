@@ -1,15 +1,37 @@
 from app.models import User
 
 
+def test_first_goal_applies_immediately(client, auth, db):
+    """온보딩의 첫 설정. 미루면 첫날은 유저가 고르지도 않은 60분으로 정산된다."""
+    r = client.patch("/users/me/goal", headers=auth, json={"minutes": 120})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["daily_goal_minutes"] == 120
+    assert body["pending_goal_minutes"] is None
+    assert db.query(User).one().goal_initialized is True
+
+
 def test_goal_change_is_staged_not_applied(client, auth, db):
+    client.patch("/users/me/goal", headers=auth, json={"minutes": 120})   # 온보딩
     r = client.patch("/users/me/goal", headers=auth, json={"minutes": 30})
     assert r.status_code == 200
     body = r.json()
-    assert body["daily_goal_minutes"] == 60      # 오늘 목표는 그대로
+    assert body["daily_goal_minutes"] == 120     # 오늘 목표는 그대로
     assert body["pending_goal_minutes"] == 30    # 내일부터 적용
 
 
+def test_only_the_first_change_is_immediate(client, auth, db):
+    """두 번째부터는 미뤄져야 한다 — 밤에 목표를 낮춰 페이백을 타는 것을 막는
+    규칙이고, 첫 설정 예외가 그 구멍이 되면 안 된다."""
+    client.patch("/users/me/goal", headers=auth, json={"minutes": 120})
+    client.patch("/users/me/goal", headers=auth, json={"minutes": 1})
+    user = db.query(User).one()
+    assert user.daily_goal_minutes == 120        # 오늘은 여전히 120분
+    assert user.pending_goal_minutes == 1
+
+
 def test_latest_change_wins_before_settlement(client, auth, db):
+    client.patch("/users/me/goal", headers=auth, json={"minutes": 60})    # 온보딩
     client.patch("/users/me/goal", headers=auth, json={"minutes": 30})
     client.patch("/users/me/goal", headers=auth, json={"minutes": 120})
     assert db.query(User).one().pending_goal_minutes == 120
