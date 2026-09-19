@@ -50,7 +50,7 @@ describe("피드", () => {
   it("정산된 실패는 박제한다", async () => {
     mockApi();
     await wrap();
-    await waitFor(() => expect(screen.getByText("✗ 미인증")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("미인증")).toBeTruthy());
   });
 
   it("아직 정산 전이면 결과를 단정하지 않는다", async () => {
@@ -58,10 +58,10 @@ describe("피드", () => {
     await wrap();
     await waitFor(() => expect(screen.getByText("광휘")).toBeTruthy());
     // 광휘는 result 가 null 이므로 미인증 표시가 붙으면 안 된다
-    expect(screen.getAllByText("✗ 미인증")).toHaveLength(1);
+    expect(screen.getAllByText("미인증")).toHaveLength(1);
     // null 은 실패도 성공도 아니다 — 어떤 정산 마크도 달리면 안 된다
-    expect(screen.queryByText("✓ 달성")).toBeNull();
-    expect(screen.queryByText("✓ 복구됨")).toBeNull();
+    expect(screen.queryByText("달성")).toBeNull();
+    expect(screen.queryByText("복구됨")).toBeNull();
   });
 
   it("사진을 그대로 보여준다 — 가리지 않는다", async () => {

@@ -6,6 +6,7 @@ import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { LoadFailed } from "../../src/design/LoadFailed";
+import { ScreenTitle } from "../../src/design/ScreenTitle";
 import { ListSkeleton } from "../../src/design/Skeleton";
 import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
@@ -51,7 +52,7 @@ export default function Records() {
         />
       }
     >
-      <T variant="title">기록</T>
+      <ScreenTitle title="기록" subtitle="하루하루 확보한 금액이 여기 쌓여요." />
 
       {list.length === 0 && (
         <T variant="body" kind="sub">
@@ -93,7 +94,7 @@ export default function Records() {
               ) : (
                 <T variant="caption" kind="muted">
                   복구에는 {formatWon(RESTORE_COST)}이 필요해요. 지금 크레딧은{" "}
-                  {formatWon(balance)}입니다 — 목표를 채운 날마다 쌓입니다.
+                  {formatWon(balance)}입니다. 목표를 채운 날마다 쌓여요.
                 </T>
               ))}
           </Card>

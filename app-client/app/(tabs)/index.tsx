@@ -9,6 +9,7 @@ import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { DayGrid, isoDateAtOffset, type Mark } from "../../src/design/DayGrid";
 import { LoadFailed } from "../../src/design/LoadFailed";
+import { ScreenTitle } from "../../src/design/ScreenTitle";
 import { ScreenSkeleton } from "../../src/design/Skeleton";
 import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
@@ -109,9 +110,10 @@ export default function Home() {
         />
       }
     >
-      <T variant="body" kind="sub">
-        {me.data?.nickname ?? ""}님 · {me.data?.streak_count ?? 0}일째 이어가는 중
-      </T>
+      <ScreenTitle
+        title={`${me.data?.nickname ?? ""}님`}
+        subtitle={`${me.data?.streak_count ?? 0}일째 이어가는 중`}
+      />
 
       {activeChallenge ? (
         <View style={{ gap: space.sm }}>

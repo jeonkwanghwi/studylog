@@ -167,7 +167,7 @@ export default function Select() {
             <>
               <T variant="section">결제가 완료됐습니다</T>
               <T variant="body" kind="sub">
-                챌린지가 열리기까지 시간이 조금 더 걸리고 있어요. 곧 나타납니다 — 화면을
+                챌린지가 열리기까지 시간이 조금 더 걸리고 있어요. 곧 나타납니다. 화면을
                 나가지 말고 새로고침해보세요.
               </T>
               <Button label="새로고침" tone="secondary" onPress={() => challenge.refetch()} />
@@ -184,7 +184,7 @@ export default function Select() {
       )}
 
       {(products.data ?? []).map((product) => (
-        <Card key={product.product_id} style={{ gap: space.md }}>
+        <Card key={product.product_id} elevation="raised" style={{ gap: space.md }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
             <T variant="section">{product.days}일</T>
             <Amount value={product.price} size="amount" />

@@ -6,8 +6,10 @@ import { useFeed, useGroups } from "../../src/api/hooks";
 import type { FeedItemOut } from "../../src/api/types";
 import { PhotoGrid } from "../../src/components/PhotoGrid";
 import { Button } from "../../src/design/Button";
+import { Badge } from "../../src/design/Badge";
 import { Card } from "../../src/design/Card";
 import { LoadFailed } from "../../src/design/LoadFailed";
+import { ScreenTitle } from "../../src/design/ScreenTitle";
 import { ListSkeleton } from "../../src/design/Skeleton";
 import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
@@ -16,11 +18,12 @@ import { color, radius, space } from "../../src/design/tokens";
 import { formatElapsed } from "../../src/time/elapsed";
 
 // result 는 정산 전엔 null 이다. 04시 정산 전까지는 대부분 null 이므로
-// 여기서 실패로 오해할 마크를 달면 아직 공부 중인 사람에게 거짓을 말하는 것이다.
-const RESULT_LABEL: Record<"success" | "passed" | "failed", string> = {
-  success: "✓ 달성",
-  passed: "✓ 복구됨",
-  failed: "✗ 미인증",
+// 여기서 실패로 오해할 표시를 달면 아직 공부 중인 사람에게 거짓을 말하는 것이다.
+const RESULT: Record<"success" | "passed" | "failed",
+                     { label: string; tone: "positive" | "negative" }> = {
+  success: { label: "달성", tone: "positive" },
+  passed: { label: "복구됨", tone: "positive" },
+  failed: { label: "미인증", tone: "negative" },
 };
 
 export default function Feed() {
@@ -63,7 +66,7 @@ export default function Feed() {
         />
       }
     >
-      <T variant="title">피드</T>
+      <ScreenTitle title="피드" subtitle="오늘 그룹원들이 어디까지 했는지 보여줍니다." />
 
       {list.length > 1 && (
         <ScrollView
@@ -111,7 +114,7 @@ export default function Feed() {
 }
 
 function FeedRow({ item }: { item: FeedItemOut }) {
-  const label = item.result ? RESULT_LABEL[item.result] : null;
+  const result = item.result ? RESULT[item.result] : null;
   return (
     <Card style={{ gap: space.sm }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
@@ -122,15 +125,11 @@ function FeedRow({ item }: { item: FeedItemOut }) {
           {item.streak_count}일 연속
         </T>
       </View>
-      <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.sm }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
         <T variant="body" kind="sub">
           {formatElapsed(item.total_minutes)} / {item.goal_minutes}분
         </T>
-        {label && (
-          <T variant="body" kind={item.result === "failed" ? "negative" : "accent"}>
-            {label}
-          </T>
-        )}
+        {result && <Badge label={result.label} tone={result.tone} />}
       </View>
       <PhotoGrid photos={item.photos} />
     </Card>

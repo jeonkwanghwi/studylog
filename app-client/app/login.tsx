@@ -114,8 +114,29 @@ export default function Login() {
         onPress={() => promptGoogle()}
       />
 
+      {/* 문서가 없는데 동의를 받고 있었다. 실제로 열리는 링크로 바꾼다. */}
       <T variant="caption" kind="muted" style={{ textAlign: "center", marginTop: space.base }}>
-        계속하면 이용약관과 개인정보처리방침에 동의하는 것으로 봅니다.
+        계속하면{" "}
+        <T
+          variant="caption"
+          kind="sub"
+          accessibilityRole="link"
+          style={{ textDecorationLine: "underline" }}
+          onPress={() => router.push("/legal/terms")}
+        >
+          이용약관
+        </T>
+        과{" "}
+        <T
+          variant="caption"
+          kind="sub"
+          accessibilityRole="link"
+          style={{ textDecorationLine: "underline" }}
+          onPress={() => router.push("/legal/privacy")}
+        >
+          개인정보처리방침
+        </T>
+        에 동의하는 것으로 봅니다.
       </T>
     </View>
   );

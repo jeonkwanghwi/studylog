@@ -9,6 +9,7 @@ import { GOAL_MAX_MINUTES, GOAL_MIN_MINUTES } from "../../src/config";
 import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
 import { useScreenPadding } from "../../src/design/safeArea";
+import { ScreenTitle } from "../../src/design/ScreenTitle";
 import { T } from "../../src/design/Text";
 import { Toast, useToast } from "../../src/design/Toast";
 import { color, radius, space, type } from "../../src/design/tokens";
@@ -56,7 +57,7 @@ export default function Settings() {
     <ScrollView
       contentContainerStyle={{ padding: space.lg, gap: space.xl, ...screenPadding }}
     >
-      <T variant="title">설정</T>
+      <ScreenTitle title="설정" />
 
       <View style={{ gap: space.sm }}>
         <T variant="section">하루 목표 (분)</T>
@@ -114,6 +115,17 @@ export default function Settings() {
       />
 
       <Button label="그룹 관리" tone="secondary" onPress={() => router.push("/groups")} />
+
+      <View style={{ gap: space.sm }}>
+        <T variant="section">약관</T>
+        {/* 가입 후에는 로그인 화면을 다시 볼 수 없다. 여기서도 닿아야 한다. */}
+        <Button label="이용약관" tone="text" onPress={() => router.push("/legal/terms")} />
+        <Button
+          label="개인정보처리방침"
+          tone="text"
+          onPress={() => router.push("/legal/privacy")}
+        />
+      </View>
 
       <Button
         label="로그아웃"

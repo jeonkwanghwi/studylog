@@ -9,6 +9,7 @@ import type { GroupOut } from "../../src/api/types";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { useScreenPadding } from "../../src/design/safeArea";
+import { ScreenTitle } from "../../src/design/ScreenTitle";
 import { T } from "../../src/design/Text";
 import { Toast, useToast } from "../../src/design/Toast";
 import { Touchable } from "../../src/design/Touchable";
@@ -86,7 +87,7 @@ export default function Groups() {
       automaticallyAdjustKeyboardInsets
       contentContainerStyle={{ padding: space.xl, gap: space.xl, ...screenPadding }}
     >
-      <T variant="title">그룹</T>
+      <ScreenTitle title="그룹" subtitle="같이 하는 사람이 있을 때 더 오래 갑니다." />
 
       {list.length === 0 && !groups.isLoading ? (
         <T variant="body" kind="sub">
@@ -96,7 +97,7 @@ export default function Groups() {
         <View style={{ gap: space.md }}>
           {list.map((group) => (
             <Touchable key={group.id} accessibilityRole="button" onPress={() => share(group)}>
-              <Card style={{ gap: space.xs }}>
+              <Card elevation="raised" style={{ gap: space.xs }}>
                 <T variant="section">{group.name}</T>
                 <T variant="body" kind="sub" style={{ letterSpacing: 2 }}>
                   {group.invite_code}

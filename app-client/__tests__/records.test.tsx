@@ -76,7 +76,7 @@ describe("기록", () => {
     await wrap(<Records />);
     await waitFor(() => expect(screen.getByText(/2,000원이 필요해요/)).toBeTruthy());
     expect(screen.getByText(/지금 크레딧은 500원/)).toBeTruthy();
-    expect(screen.getByText(/목표를 채운 날마다 쌓입니다/)).toBeTruthy();
+    expect(screen.getByText(/목표를 채운 날마다 쌓여요/)).toBeTruthy();
     expect(screen.queryByText("복구하기")).toBeNull();
   });
 

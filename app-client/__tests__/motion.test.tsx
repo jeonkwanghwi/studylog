@@ -115,3 +115,22 @@ describe("불러오기 실패 안내", () => {
     expect(screen.getByText(/현재 상태를 불러오지 못했습니다/)).toBeTruthy();
   });
 });
+
+describe("상태 뱃지", () => {
+  it("기호 대신 낱말로 말한다", async () => {
+    // "✓ 달성" 은 색맹 사용자에게 ✗ 와 구분되지 않고, 스크린리더는
+    // "체크 달성" 이라고 읽는다.
+    const { Badge } = require("../src/design/Badge");
+    await render(<Badge label="달성" tone="positive" />);
+    expect(screen.getByText("달성")).toBeTruthy();
+    expect(screen.queryByText(/✓|✗/)).toBeNull();
+  });
+});
+
+describe("화면 제목", () => {
+  it("설명이 없으면 억지로 넣지 않는다", async () => {
+    const { ScreenTitle } = require("../src/design/ScreenTitle");
+    await render(<ScreenTitle title="설정" />);
+    expect(screen.getByText("설정")).toBeTruthy();
+  });
+});
