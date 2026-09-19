@@ -6,6 +6,7 @@ import { ApiError, api } from "../../src/api/client";
 import { useInvalidateAll } from "../../src/api/hooks";
 import type { DailyRecordOut } from "../../src/api/types";
 import { Appear } from "../../src/design/Appear";
+import { BackButton } from "../../src/design/BackButton";
 import { Button } from "../../src/design/Button";
 import { haptic } from "../../src/design/motion";
 import { T } from "../../src/design/Text";
@@ -70,6 +71,8 @@ export default function Restore() {
 
   return (
     <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
+      {/* 확인 화면에 나갈 방법이 스와이프뿐이었다. */}
+      {phase.name !== "sending" && <BackButton label="취소" />}
       <T variant="title">연속 기록 복구</T>
       <T variant="body" kind="sub">
         크레딧 {formatWon(RESTORE_COST)}을 써서 끊긴 연속 기록을 되살립니다.

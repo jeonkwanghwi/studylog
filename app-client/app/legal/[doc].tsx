@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { ScrollView, View } from "react-native";
 
+import { BackButton } from "../../src/design/BackButton";
 import { Button } from "../../src/design/Button";
 import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
@@ -53,6 +54,7 @@ export default function Legal() {
 
   return (
     <ScrollView contentContainerStyle={{ padding: space.xl, gap: space.xl, ...screenPadding }}>
+      <BackButton />
       <T variant="title">{entry.title}</T>
 
       {incomplete && (

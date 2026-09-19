@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, TextInput, View } from "react-native";
 
+import { BackButton } from "../src/design/BackButton";
 import { Button } from "../src/design/Button";
 import { useScreenPadding } from "../src/design/safeArea";
 import { T } from "../src/design/Text";
@@ -24,6 +25,7 @@ export default function Declare() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={{ flex: 1, padding: space.xl, gap: space.lg, ...screenPadding }}
     >
+      <BackButton />
       <T variant="title">오늘 뭐 할 건가요?</T>
       <T variant="body" kind="sub">
         적은 내용과 사진이 맞는지로 인증합니다. 구체적으로 적을수록 정확해요.

@@ -6,6 +6,7 @@ import { ApiError, api } from "../../src/api/client";
 import { useCurrentChallenge, useInvalidateAll, useMe, useProducts } from "../../src/api/hooks";
 import type { ChallengeProductOut } from "../../src/api/types";
 import { Amount } from "../../src/design/Amount";
+import { BackButton } from "../../src/design/BackButton";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { ListSkeleton } from "../../src/design/Skeleton";
@@ -157,6 +158,9 @@ export default function Select() {
     <ScrollView
       contentContainerStyle={{ padding: space.lg, gap: space.base, ...screenPadding }}
     >
+      {/* 결제 확인 중에는 나가면 안 된다 — 돌아와서 다시 사면 두 번째
+          결제는 영수증만 남는다. */}
+      {!confirming && <BackButton />}
       <T variant="body" kind="sub">
         참가비를 먼저 내고, 목표를 채운 날마다 하루치를 크레딧으로 돌려받습니다.
       </T>

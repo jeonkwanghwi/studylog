@@ -13,7 +13,10 @@ export const color = {
   accentStrong: "#1B4FBF", // 위 배경 위의 글자. 대비 5.32 (AA 통과)
   negative: "#F04452", // 잃은 돈
   negativeSoft: "#FEECEE", // 잃은 돈 배경
-  line: "#F2F4F6",
+  line: "#F2F4F6",          // 구분선. 장식이라 옅어도 된다
+  // 버튼 테두리. WCAG 1.4.11 은 비텍스트 UI 요소에 배경 대비 3.0 을
+  // 요구한다. fillStrong(1.23)으로는 버튼이 배경에 묻혀 안 보인다.
+  border: "#8B95A1",        // 대비 3.04
 } as const;
 
 export const space = {

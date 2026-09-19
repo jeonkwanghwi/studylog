@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../../src/api/client";
 import { keys, useGroups } from "../../src/api/hooks";
 import type { GroupOut } from "../../src/api/types";
+import { BackButton } from "../../src/design/BackButton";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { useScreenPadding } from "../../src/design/safeArea";
@@ -87,6 +88,7 @@ export default function Groups() {
       automaticallyAdjustKeyboardInsets
       contentContainerStyle={{ padding: space.xl, gap: space.xl, ...screenPadding }}
     >
+      <BackButton />
       <ScreenTitle title="그룹" subtitle="같이 하는 사람이 있을 때 더 오래 갑니다." />
 
       {list.length === 0 && !groups.isLoading ? (

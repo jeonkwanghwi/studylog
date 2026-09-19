@@ -6,6 +6,7 @@ import { ApiError, api } from "../../src/api/client";
 import { useInvalidateAll } from "../../src/api/hooks";
 import type { JudgeResultOut } from "../../src/api/types";
 import { Appear } from "../../src/design/Appear";
+import { BackButton } from "../../src/design/BackButton";
 import { Button } from "../../src/design/Button";
 import { haptic } from "../../src/design/motion";
 import { useScreenPadding } from "../../src/design/safeArea";
@@ -100,6 +101,9 @@ export default function Appeal() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={{ flex: 1, padding: space.xl, gap: space.lg, ...screenPadding }}
     >
+      {/* 전송 중에는 나가면 안 된다 — 단 한 번뿐인 기회가 소모되고
+          결과는 영영 못 본다. 그래서 그때만 감춘다. */}
+      {!sending && <BackButton />}
       <T variant="title">이의제기</T>
       <T variant="body" kind="sub">
         사진에서 무엇을 하고 있었는지 적어주세요. 이 설명을 참고해 한 번만 다시 판정합니다.

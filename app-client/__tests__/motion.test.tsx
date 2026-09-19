@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { AccessibilityInfo, Text } from "react-native";
 
 import { Button, TONE_LABEL, TONE_SURFACE } from "../src/design/Button";
+import { color } from "../src/design/tokens";
 import { LoadFailed } from "../src/design/LoadFailed";
 import { Skeleton } from "../src/design/Skeleton";
 import { Toast } from "../src/design/Toast";
@@ -151,13 +152,32 @@ describe("버튼 톤", () => {
 
   const labelStyle = (label: string) => flatten(screen.getByText(label).props.style);
 
-  it("secondary 는 배경에 묻히지 않게 윤곽선을 갖는다", async () => {
-    // 채움색 #F2F4F6 과 화면 배경 #FFFFFF 의 대비는 1.10 이다.
-    // 면만으로는 버튼이 없는 것처럼 보인다.
-    expect(TONE_SURFACE.secondary.borderWidth).toBe(1);
-    expect(TONE_SURFACE.secondary.backgroundColor).toBe("#F2F4F6");
-    // primary 는 면이 진해서 윤곽선이 필요 없다.
-    expect(TONE_SURFACE.primary.borderWidth).toBeUndefined();
+  const contrast = (a: string, b: string) => {
+    const lum = (hex: string) => {
+      const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const lin = c.map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+    };
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  it("테두리가 배경에서 실제로 보인다 — WCAG 1.4.11 의 3.0 기준", () => {
+    // 전에 쓰던 #E5E8EB 는 대비 1.23 이라 흰 배경에 묻혀서 "버튼이 없는
+    // 것처럼" 보였다. 눈으로는 "좀 흐리네" 로만 보여서 놓치기 쉽다.
+    expect(contrast(color.border, color.bg)).toBeGreaterThanOrEqual(3.0);
+    expect(TONE_SURFACE.secondary.borderColor).toBe(color.border);
+    expect(TONE_SURFACE.text.borderColor).toBe(color.accent);
+  });
+
+  it("quiet 만 상자가 아니다", () => {
+    // 글자만 떠 있으면 누를 수 있는 것인지 알 수 없다. 닫기·취소는
+    // 주된 행동과 경쟁하면 안 되는 유일한 예외다.
+    for (const tone of ["primary", "secondary", "text"] as const) {
+      expect(TONE_SURFACE[tone].backgroundColor).toBeTruthy();
+    }
+    expect(TONE_SURFACE.quiet.backgroundColor).toBeUndefined();
+    expect(TONE_SURFACE.quiet.borderWidth).toBeUndefined();
   });
 
   it("text 는 누를 수 있다는 것이 보이게 강조색을 쓴다", async () => {

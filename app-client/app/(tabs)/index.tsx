@@ -95,9 +95,18 @@ export default function Home() {
   const securedDays = marks.filter((m) => m === "secured").length;
   const remaining = open ? remainingBeforeForfeit(open.started_at, now) : 0;
 
+  // 챌린지도 세션도 없으면 이 화면에서 할 일은 둘뿐이다. 스크롤 위쪽에
+  // 작게 두지 말고 가운데에 크게 둬서, 보자마자 누를 수 있게 한다.
+  const idle = !activeChallenge && !open;
+
   return (
     <ScrollView
-      contentContainerStyle={{ padding: space.lg, gap: space.xl, ...screenPadding }}
+      contentContainerStyle={{
+        padding: space.lg,
+        gap: space.xl,
+        ...screenPadding,
+        ...(idle ? { flexGrow: 1, justifyContent: "center" } : {}),
+      }}
       refreshControl={
         <RefreshControl
           refreshing={records.isFetching && !records.isLoading}
@@ -155,6 +164,7 @@ export default function Home() {
           <Button
             label="챌린지 시작"
             tone="secondary"
+            size={idle ? "large" : "normal"}
             onPress={() => router.push("/challenge/select")}
           />
         </View>
@@ -184,6 +194,7 @@ export default function Home() {
         <Button
           label="공부 시작"
           tone="primary"
+          size={idle ? "large" : "normal"}
           onPress={() => router.push("/declare")}
         />
       )}

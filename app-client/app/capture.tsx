@@ -9,11 +9,14 @@ import {
   View,
 } from "react-native";
 
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { ApiError } from "../src/api/client";
 import { useInvalidateAll } from "../src/api/hooks";
 import type { JudgeResultOut } from "../src/api/types";
 import { uploadPhoto, type ShotKind } from "../src/api/upload";
 import { Appear } from "../src/design/Appear";
+import { BackButton } from "../src/design/BackButton";
 import { Button } from "../src/design/Button";
 import { haptic } from "../src/design/motion";
 import { T } from "../src/design/Text";
@@ -46,6 +49,7 @@ export default function Capture() {
   const cameraRef = useRef<CameraView>(null);
   const invalidate = useInvalidateAll();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   // 종료 샷이 error 이고 재시도로 절대 뚫리지 않을 상태(notFound)가 아니면,
   // 이 화면을 빠져나갈 수 없다 — 나가면 세션이 4시간 뒤 조용히 회수된다.
@@ -230,7 +234,25 @@ export default function Capture() {
           </View>
         </View>
       ) : (
-        <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
+        <View style={{ flex: 1 }}>
+          <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
+          {/* 종료 샷은 나가면 세션이 4시간 뒤 회수된다 — 그때는 막는다.
+              시작 샷은 아직 아무것도 걸린 게 없으니 나갈 수 있어야 한다. */}
+          {kind === "start" && (
+            <View
+              style={{
+                position: "absolute",
+                top: insets.top + space.sm,
+                left: space.base,
+                backgroundColor: "rgba(255,255,255,0.92)",
+                borderRadius: radius.pill,
+                paddingHorizontal: space.sm,
+              }}
+            >
+              <BackButton label="닫기" />
+            </View>
+          )}
+        </View>
       )}
       <View style={{ padding: space.xl, alignItems: "center", backgroundColor: color.bg }}>
         {uploading ? (
