@@ -1,7 +1,13 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, BackHandler, Linking, View } from "react-native";
+import {
+  ActivityIndicator,
+  BackHandler,
+  Image,
+  Linking,
+  View,
+} from "react-native";
 
 import { ApiError } from "../src/api/client";
 import { useInvalidateAll } from "../src/api/hooks";
@@ -17,7 +23,9 @@ import { remainingBeforeForfeit } from "../src/time/elapsed";
 
 type Phase =
   | { name: "ready" }
-  | { name: "uploading" }
+  // 올리는 동안 찍은 사진을 보여준다. 카메라가 계속 떠 있으면 셔터가
+  // 눌렸는지도 모르겠고, 무엇이 올라가는지도 안 보인다.
+  | { name: "uploading"; uri: string }
   | { name: "judged"; result: JudgeResultOut }
   // uri 를 들고 있어야 "다시 시도"가 같은 사진을 다시 올린다. 사진은 이미
   // 찍혔고 실패한 것은 업로드다 — 다시 찍게 하면 유저 시간을 뺏고,
@@ -56,7 +64,7 @@ export default function Capture() {
   }, [navigation, blockExit]);
 
   async function send(uri: string) {
-    setPhase({ name: "uploading" });
+    setPhase({ name: "uploading", uri });
     try {
       const result = await uploadPhoto(kind, uri, { sessionId, activity });
       await invalidate();
@@ -91,7 +99,6 @@ export default function Capture() {
       setPhase({ name: "ready" });
       return;
     }
-    setPhase({ name: "uploading" });
     let uri: string;
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
@@ -121,7 +128,7 @@ export default function Capture() {
         ) : (
           <Button label="설정 열기" tone="primary" onPress={() => Linking.openSettings()} />
         )}
-        <Button label="닫기" tone="text" onPress={() => router.back()} />
+        <Button label="닫기" tone="quiet" onPress={() => router.back()} />
       </View>
     );
   }
@@ -193,22 +200,43 @@ export default function Capture() {
           tone="primary"
           onPress={() => (phase.uri ? send(phase.uri) : shoot())}
         />
-        {!isEnd && <Button label="닫기" tone="text" onPress={() => router.back()} />}
+        {!isEnd && <Button label="닫기" tone="quiet" onPress={() => router.back()} />}
       </Appear>
     );
   }
 
+  const uploading = phase.name === "uploading";
+
   return (
     <View style={{ flex: 1 }}>
-      <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
-      <View style={{ padding: space.xl, alignItems: "center", backgroundColor: color.bg }}>
-        {phase.name === "uploading" ? (
-          <View style={{ alignItems: "center", gap: space.sm }}>
-            <ActivityIndicator color={color.accent} />
-            <T variant="caption" kind="muted">
+      {uploading ? (
+        // 찍은 사진을 그대로 띄우고 그 위에 판정 중임을 겹친다.
+        <View style={{ flex: 1 }}>
+          <Image source={{ uri: phase.uri }} style={{ flex: 1 }} resizeMode="cover" />
+          <View
+            style={{
+              position: "absolute",
+              top: 0, left: 0, right: 0, bottom: 0,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(25,31,40,0.45)",
+              gap: space.md,
+            }}
+          >
+            <ActivityIndicator color="#FFFFFF" size="large" />
+            <T variant="section" style={{ color: "#FFFFFF" }}>
               판정 중…
             </T>
           </View>
+        </View>
+      ) : (
+        <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
+      )}
+      <View style={{ padding: space.xl, alignItems: "center", backgroundColor: color.bg }}>
+        {uploading ? (
+          <T variant="caption" kind="muted">
+            사진을 확인하고 있어요
+          </T>
         ) : (
           <Touchable
             accessibilityRole="button"

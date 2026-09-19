@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { AccessibilityInfo, Text } from "react-native";
 
-import { Button } from "../src/design/Button";
+import { Button, TONE_LABEL, TONE_SURFACE } from "../src/design/Button";
 import { LoadFailed } from "../src/design/LoadFailed";
 import { Skeleton } from "../src/design/Skeleton";
 import { Toast } from "../src/design/Toast";
@@ -132,5 +132,52 @@ describe("화면 제목", () => {
     const { ScreenTitle } = require("../src/design/ScreenTitle");
     await render(<ScreenTitle title="설정" />);
     expect(screen.getByText("설정")).toBeTruthy();
+  });
+});
+
+describe("버튼 톤", () => {
+  // style 이 배열로 온다. Object.assign 은 RN 스타일 객체의 일부 키를
+  // 빠뜨려서 직접 합친다.
+  const flatten = (style: unknown): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    const walk = (v: unknown) => {
+      if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === "object")
+        for (const k of Object.keys(v)) out[k] = (v as Record<string, unknown>)[k];
+    };
+    walk(style);
+    return out;
+  };
+
+  const labelStyle = (label: string) => flatten(screen.getByText(label).props.style);
+
+  it("secondary 는 배경에 묻히지 않게 윤곽선을 갖는다", async () => {
+    // 채움색 #F2F4F6 과 화면 배경 #FFFFFF 의 대비는 1.10 이다.
+    // 면만으로는 버튼이 없는 것처럼 보인다.
+    expect(TONE_SURFACE.secondary.borderWidth).toBe(1);
+    expect(TONE_SURFACE.secondary.backgroundColor).toBe("#F2F4F6");
+    // primary 는 면이 진해서 윤곽선이 필요 없다.
+    expect(TONE_SURFACE.primary.borderWidth).toBeUndefined();
+  });
+
+  it("text 는 누를 수 있다는 것이 보이게 강조색을 쓴다", async () => {
+    await render(<Button label="이의제기" tone="text" onPress={() => {}} />);
+    // 전에는 primary 가 아닐 때 color: undefined 를 명시적으로 넘겨서
+    // kind 가 정한 색을 지워버렸다. 글자색이 통째로 날아갔다.
+    expect(labelStyle("이의제기").color).toBe("#2B6CF6");
+  });
+
+  it("행동 버튼과 해제 버튼은 다른 색을 쓴다", () => {
+    // 전에는 둘 다 tone="text" 였고 회색 글자라, 이의제기 같은 실제
+    // 행동과 그냥 닫기가 똑같이 생겼다.
+    expect(TONE_LABEL.text).toBe("accent");
+    expect(TONE_LABEL.quiet).toBe("muted");
+  });
+
+  it("quiet 은 그냥 나가는 버튼이라 눈에 덜 띈다", async () => {
+    // 전에는 둘 다 회색이라, 실제로 뭔가 하는 버튼과 그냥 닫는 버튼이
+    // 똑같이 생겼다.
+    await render(<Button label="닫기" tone="quiet" onPress={() => {}} />);
+    expect(labelStyle("닫기").color).toBe("#8B95A1");
   });
 });

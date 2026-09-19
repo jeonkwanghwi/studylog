@@ -42,7 +42,7 @@ export default function Legal() {
     return (
       <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
         <T variant="title">없는 문서입니다</T>
-        <Button label="닫기" tone="text" onPress={() => router.back()} />
+        <Button label="닫기" tone="quiet" onPress={() => router.back()} />
       </View>
     );
   }
@@ -78,7 +78,7 @@ export default function Legal() {
         </View>
       ))}
 
-      <Button label="닫기" tone="text" onPress={() => router.back()} />
+      <Button label="닫기" tone="quiet" onPress={() => router.back()} />
     </ScrollView>
   );
 }

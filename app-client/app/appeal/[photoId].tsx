@@ -90,7 +90,7 @@ export default function Appeal() {
         <T variant="body" kind="sub">
           {phase.detail}
         </T>
-        <Button label="닫기" tone="text" onPress={() => router.back()} />
+        <Button label="닫기" tone="quiet" onPress={() => router.back()} />
       </Appear>
     );
   }

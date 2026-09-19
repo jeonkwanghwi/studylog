@@ -128,7 +128,7 @@ export default function Select() {
           loading={busy !== null}
           onPress={() => payWithCredit(creditConfirm)}
         />
-        <Button label="취소" tone="text" onPress={() => setCreditConfirm(null)} />
+        <Button label="취소" tone="quiet" onPress={() => setCreditConfirm(null)} />
       </View>
     );
   }
@@ -148,7 +148,7 @@ export default function Select() {
           연결을 확인하고 다시 시도해주세요.
         </T>
         <Button label="다시 시도" tone="primary" onPress={() => products.refetch()} />
-        <Button label="닫기" tone="text" onPress={() => router.back()} />
+        <Button label="닫기" tone="quiet" onPress={() => router.back()} />
       </View>
     );
   }
