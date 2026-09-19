@@ -16,5 +16,9 @@ def build_provider(name: str, model: str) -> JudgeProvider:
     if name == "openai":
         from app.judge.openai import OpenAIJudge
 
-        return OpenAIJudge(model=model, api_key=settings.openai_api_key)
+        return OpenAIJudge(
+            model=model,
+            api_key=settings.openai_api_key,
+            reasoning_effort=settings.judge_reasoning_effort,
+        )
     raise ValueError(f"unknown judge provider: {name}")

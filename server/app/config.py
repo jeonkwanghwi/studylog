@@ -26,12 +26,16 @@ class Settings(BaseSettings):
     photo_url_expire_seconds: int = 3600
 
     # 판정
-    judge_provider: str = "claude"
-    judge_model: str = "claude-haiku-4-5"
+    judge_provider: str = "openai"
+    judge_model: str = "gpt-5-mini"
     judge_fail_confidence: float = 0.7
     judge_timeout_seconds: float = 10.0
     judge_retry_attempts: int = 3
     judge_retry_backoff_seconds: float = 0.5
+    # OpenAI GPT-5 계열 전용. 비워두면 보내지 않는다(다른 모델은 이 인자를
+    # 모른다). "minimal" 이면 추론 토큰을 쓰지 않는다 — 장면 인식에 긴
+    # 추론은 필요 없고, 추론이 예산을 먹으면 응답이 통째로 비어서 온다.
+    judge_reasoning_effort: str = "low"
     anthropic_api_key: str = ""
     openai_api_key: str = ""
 
