@@ -67,6 +67,7 @@ const KAKAO_DISCOVERY = {
  */
 export function useKakaoIdToken() {
   const clientId = process.env.EXPO_PUBLIC_KAKAO_REST_API_KEY ?? "";
+  const configured = clientId.length > 0;
   const redirectUri = AuthSession.makeRedirectUri();
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     { clientId, scopes: ["openid"], redirectUri },
@@ -91,8 +92,14 @@ export function useKakaoIdToken() {
     });
   }, [response, request, clientId, redirectUri]);
 
-  return { request, promptAsync, idToken };
+  return { request: configured ? request : null, promptAsync, idToken };
 }
+
+export type IdTokenHook = {
+  request: unknown | null;
+  promptAsync: () => Promise<unknown>;
+  idToken: string | null;
+};
 
 /**
  * Google 은 훅으로만 쓸 수 있다(리다이렉트를 화면 생명주기에 묶는다).
@@ -100,7 +107,7 @@ export function useKakaoIdToken() {
  * audience 검증에서 떨어뜨린다. response.params.id_token 이 비어 있으면
  * idToken 을 null 로 두어, 화면이 빈 토큰을 서버로 보내지 않게 한다.
  */
-export function useGoogleIdToken() {
+function useConfiguredGoogle(): IdTokenHook {
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
@@ -113,3 +120,27 @@ export function useGoogleIdToken() {
 
   return { request, promptAsync, idToken };
 }
+
+/** 설정이 없을 때. request 가 null 이라 화면이 버튼을 잠근다. */
+function useUnconfiguredGoogle(): IdTokenHook {
+  return { request: null, promptAsync: async () => null, idToken: null };
+}
+
+/**
+ * Google 설정이 없으면 useIdTokenAuthRequest 는 렌더 도중 invariant 로 던진다.
+ * 그러면 Google 버튼만 죽는 게 아니라 로그인 화면 전체가 크래시해서
+ * 카카오·Apple 로도 못 들어간다. 로그인 화면은 앱의 유일한 입구라
+ * 한 제공자의 설정 누락이 앱 전체를 막으면 안 된다.
+ *
+ * 분기를 모듈 로드 시점에 고정한다 — 환경변수는 런타임에 바뀌지 않으므로
+ * 컴포넌트는 항상 같은 훅을 부른다(훅 순서가 흔들리지 않는다).
+ */
+const GOOGLE_CONFIGURED = Boolean(
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID
+);
+
+export const useGoogleIdToken: () => IdTokenHook = GOOGLE_CONFIGURED
+  ? useConfiguredGoogle
+  : useUnconfiguredGoogle;
