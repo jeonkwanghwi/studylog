@@ -42,8 +42,17 @@ describe("약관·개인정보처리방침", () => {
     expect(lines).toMatch(/이메일, 실명, 프로필 사진, 생년월일, 성별을 요청하지 않으며/);
   });
 
-  it("지어낸 사업자 정보가 들어가 있지 않다", () => {
+  it("개인 개발자로 내므로 사업자 정보를 적지 않는다", () => {
+    // 없는 사업자등록번호를 적는 것 자체가 허위 표시다.
     const operator = TERMS.find((s) => s.heading === "운영자 정보")!;
-    expect(operator.body.every((line) => line.includes(NEEDS_INPUT))).toBe(true);
+    const text = operator.body.join(" ");
+    expect(text).not.toMatch(/사업자등록번호|상호/);
+    expect(text).toContain("개인 개발자");
+  });
+
+  it("신원과 문의처는 아직 비어 있다 — 지어내지 않았다", () => {
+    const operator = TERMS.find((s) => s.heading === "운영자 정보")!;
+    const needed = operator.body.filter((line) => line.includes(NEEDS_INPUT));
+    expect(needed.length).toBeGreaterThanOrEqual(3);   // 개발자명, 문의, 시행일
   });
 });
