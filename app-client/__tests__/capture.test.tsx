@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import Capture from "../app/capture";
+import { installXhrMock, type XhrMock } from "../src/testing/mockXhr";
 
 jest.mock("expo-router", () => ({
   router: { back: jest.fn(), replace: jest.fn(), push: jest.fn() },
@@ -19,18 +20,22 @@ const wrap = (ui: React.ReactElement) =>
     <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>
   );
 
-afterEach(() => jest.restoreAllMocks());
+let xhr: XhrMock;
+beforeEach(() => {
+  xhr = installXhrMock();
+});
+afterEach(() => {
+  xhr.restore();
+  jest.restoreAllMocks();
+});
 
 describe("촬영", () => {
   it("통과하면 결과를 보여주고 닫을 수 있다", async () => {
-    jest.spyOn(global, "fetch").mockResolvedValue({
-      ok: true, status: 200,
-      json: async () => ({
-        result: "pass", photo_id: "p1", reason: "책상에서 공부 중입니다.",
-        session: { id: "s1", started_at: "2026-09-10T01:00:00Z", ended_at: null,
-                   counted_minutes: 0, status: "open" },
-      }),
-    } as Response);
+    xhr.reply(200, {
+      result: "pass", photo_id: "p1", reason: "책상에서 공부 중입니다.",
+      session: { id: "s1", started_at: "2026-09-10T01:00:00Z", ended_at: null,
+                 counted_minutes: 0, status: "open" },
+    });
 
     await wrap(<Capture />);
     fireEvent.press(screen.getByText("촬영"));
@@ -39,12 +44,7 @@ describe("촬영", () => {
   });
 
   it("거절되면 사유와 재촬영·이의제기를 보여준다", async () => {
-    jest.spyOn(global, "fetch").mockResolvedValue({
-      ok: true, status: 200,
-      json: async () => ({
-        result: "fail", photo_id: "p9", reason: "게임 화면입니다.", session: null,
-      }),
-    } as Response);
+    xhr.reply(200, { result: "fail", photo_id: "p9", reason: "게임 화면입니다.", session: null });
 
     await wrap(<Capture />);
     fireEvent.press(screen.getByText("촬영"));
@@ -55,7 +55,16 @@ describe("촬영", () => {
   });
 
   it("업로드가 실패하면 재시도를 제안한다", async () => {
-    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    // 네트워크 실패는 XHR 의 onerror 로 온다.
+    class FailingXHR {
+      onerror: (() => void) | null = null;
+      open() {}
+      setRequestHeader() {}
+      send() {
+        this.onerror?.();
+      }
+    }
+    (global as { XMLHttpRequest?: unknown }).XMLHttpRequest = FailingXHR;
 
     await wrap(<Capture />);
     fireEvent.press(screen.getByText("촬영"));

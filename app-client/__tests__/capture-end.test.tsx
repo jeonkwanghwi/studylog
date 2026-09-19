@@ -4,6 +4,7 @@ import { useLocalSearchParams } from "expo-router";
 import { BackHandler } from "react-native";
 
 import Capture from "../app/capture";
+import { installXhrMock, type XhrMock } from "../src/testing/mockXhr";
 
 const mockSetOptions = jest.fn();
 jest.mock("expo-router", () => ({
@@ -38,7 +39,12 @@ beforeEach(() => {
   });
 });
 
+let xhr: XhrMock;
+beforeEach(() => {
+  xhr = installXhrMock();
+});
 afterEach(() => {
+  xhr.restore();
   jest.restoreAllMocks();
   jest.useRealTimers();
   mockSetOptions.mockClear();
@@ -46,7 +52,7 @@ afterEach(() => {
 
 describe("종료 샷 실패", () => {
   it("닫기를 제공하지 않는다 — 닫으면 세션이 날아간다", async () => {
-    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    xhr.fail();
     await wrap();
     fireEvent.press(screen.getByText("촬영"));
 
@@ -62,7 +68,7 @@ describe("종료 샷 실패", () => {
       sessionId: "s1",
       startedAt: new Date(Date.now() - 215 * 60_000).toISOString(),
     });
-    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    xhr.fail();
     await wrap();
     fireEvent.press(screen.getByText("촬영"));
 
@@ -74,7 +80,7 @@ describe("종료 샷 실패", () => {
   it("시작 샷 실패는 닫을 수 있다", async () => {
     // 같은 error 분기가 kind 에 따라 갈린다. 시작 샷에서 닫기가 살아있는지
     // 여기서 함께 확인해야, 나중에 누가 분기를 합쳐도 테스트가 잡는다.
-    jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+    xhr.fail();
     await wrapStart();
     fireEvent.press(screen.getByText("촬영"));
 
@@ -84,10 +90,7 @@ describe("종료 샷 실패", () => {
   });
 
   it("404 는 이 세션이 더 이상 열려 있지 않다는 뜻이라 재시도 대신 나갈 방법을 준다", async () => {
-    jest.spyOn(global, "fetch").mockResolvedValue({
-      ok: false, status: 404,
-      json: async () => ({ detail: "세션을 찾을 수 없습니다" }),
-    } as Response);
+    xhr.reply(404, { detail: "세션을 찾을 수 없습니다" });
     await wrap();
     fireEvent.press(screen.getByText("촬영"));
 
@@ -99,7 +102,7 @@ describe("종료 샷 실패", () => {
 
   describe("하드웨어 뒤로가기", () => {
     it("종료 샷이 재시도 가능한 오류 상태일 때는 뒤로가기를 삼킨다", async () => {
-      jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+      xhr.fail();
       const addEventListenerSpy = jest.spyOn(BackHandler, "addEventListener");
       await wrap();
       fireEvent.press(screen.getByText("촬영"));
@@ -121,10 +124,7 @@ describe("종료 샷 실패", () => {
     });
 
     it("404(재시도 불가) 상태에서는 뒤로가기를 막지 않는다 — 나갈 방법이 있어야 한다", async () => {
-      jest.spyOn(global, "fetch").mockResolvedValue({
-        ok: false, status: 404,
-        json: async () => ({ detail: "세션을 찾을 수 없습니다" }),
-      } as Response);
+      xhr.reply(404, { detail: "세션을 찾을 수 없습니다" });
       const addEventListenerSpy = jest.spyOn(BackHandler, "addEventListener");
       await wrap();
       fireEvent.press(screen.getByText("촬영"));
@@ -136,7 +136,7 @@ describe("종료 샷 실패", () => {
     });
 
     it("언마운트되면 리스너를 지운다 — 안 지우면 이 모달이 닫힌 뒤에도 앱 전체의 뒤로가기가 먹통이 된다", async () => {
-      jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+      xhr.fail();
       const removeMock = jest.fn();
       jest.spyOn(BackHandler, "addEventListener").mockReturnValue({ remove: removeMock });
 
@@ -157,7 +157,7 @@ describe("종료 샷 실패", () => {
     });
 
     it("종료 샷이 재시도 가능한 오류 상태일 때는 제스처를 막는다", async () => {
-      jest.spyOn(global, "fetch").mockRejectedValue(new Error("network"));
+      xhr.fail();
       await wrap();
       fireEvent.press(screen.getByText("촬영"));
 
@@ -166,10 +166,7 @@ describe("종료 샷 실패", () => {
     });
 
     it("404(재시도 불가) 상태에서는 제스처를 다시 허용한다 — 나갈 방법이 있어야 한다", async () => {
-      jest.spyOn(global, "fetch").mockResolvedValue({
-        ok: false, status: 404,
-        json: async () => ({ detail: "세션을 찾을 수 없습니다" }),
-      } as Response);
+      xhr.reply(404, { detail: "세션을 찾을 수 없습니다" });
       await wrap();
       fireEvent.press(screen.getByText("촬영"));
 
@@ -179,18 +176,13 @@ describe("종료 샷 실패", () => {
   });
 
   it("재시도해서 성공하면 종료 결과를 보여준다", async () => {
-    const fetchMock = jest
-      .spyOn(global, "fetch")
-      .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce({
-        ok: true, status: 200,
-        json: async () => ({
-          result: "pass", photo_id: "p2", reason: "노트 필기입니다.",
-          session: { id: "s1", started_at: "2026-09-10T01:00:00Z",
-                     ended_at: "2026-09-10T02:35:00Z", counted_minutes: 95,
-                     status: "closed" },
-        }),
-      } as Response);
+    xhr.failOnce();
+    xhr.replyOnce(200, {
+      result: "pass", photo_id: "p2", reason: "노트 필기입니다.",
+      session: { id: "s1", started_at: "2026-09-10T01:00:00Z",
+                 ended_at: "2026-09-10T02:35:00Z", counted_minutes: 95,
+                 status: "closed" },
+    });
 
     await wrap();
     fireEvent.press(screen.getByText("촬영"));
@@ -198,6 +190,6 @@ describe("종료 샷 실패", () => {
 
     fireEvent.press(screen.getByText("다시 시도"));
     await waitFor(() => expect(screen.getByText(/공부 종료됨/)).toBeTruthy());
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(xhr.sent).toHaveLength(2);
   });
 });

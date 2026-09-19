@@ -1,4 +1,5 @@
 import { ApiError, api, setTokenGetter } from "../src/api/client";
+import { installXhrMock } from "../src/testing/mockXhr";
 
 const json = (body: unknown, status = 200) =>
   Promise.resolve({
@@ -63,12 +64,16 @@ describe("API 클라이언트", () => {
     spy.mockRestore();
   });
 
-  it("multipart 는 Content-Type 을 직접 정하지 않는다", async () => {
-    const spy = jest.spyOn(global, "fetch").mockReturnValue(json({}));
-    const form = new FormData();
-    await api.postForm("/sessions/start", form);
-    const init = spy.mock.calls[0][1] as RequestInit;
-    expect((init.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+  it("multipart 는 fetch 가 아니라 XHR 로 나가고, Content-Type 을 직접 정하지 않는다", async () => {
+    // Expo 가 대체한 fetch 는 RN 의 파일 파트를 전송하지 못한다.
+    const xhr = installXhrMock();
+    const spy = jest.spyOn(global, "fetch");
+    await api.postForm("/sessions/start", new FormData());
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(xhr.sent).toHaveLength(1);
+    expect(Object.keys(xhr.sent[0].headers)).not.toContain("Content-Type");
+    xhr.restore();
     spy.mockRestore();
   });
 });
