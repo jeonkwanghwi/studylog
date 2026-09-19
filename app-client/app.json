@@ -18,7 +18,8 @@
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": false
             }
-          }
+          },
+          "NSAllowsLocalNetworking": true
         },
         "ITSAppUsesNonExemptEncryption": false
       }
