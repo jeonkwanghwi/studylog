@@ -8,6 +8,7 @@ import { keys, useGroups } from "../../src/api/hooks";
 import type { GroupOut } from "../../src/api/types";
 import { BackButton } from "../../src/design/BackButton";
 import { Button } from "../../src/design/Button";
+import { Field } from "../../src/design/Field";
 import { Card } from "../../src/design/Card";
 import { useScreenPadding } from "../../src/design/safeArea";
 import { ScreenTitle } from "../../src/design/ScreenTitle";
@@ -17,16 +18,6 @@ import { Touchable } from "../../src/design/Touchable";
 import { color, radius, space, type } from "../../src/design/tokens";
 
 const CODE_LENGTH = 6;
-
-const inputStyle = {
-  backgroundColor: color.fill,
-  borderRadius: radius.button,
-  padding: space.base,
-  color: color.text,
-  fontFamily: type.body.fontFamily,
-  fontSize: type.body.fontSize,
-  letterSpacing: type.body.letterSpacing,
-};
 
 export default function Groups() {
   const screenPadding = useScreenPadding();
@@ -115,27 +106,24 @@ export default function Groups() {
 
       <View style={{ gap: space.md }}>
         <T variant="section">새 그룹</T>
-        <TextInput
+        <Field
           value={name}
           onChangeText={setName}
           maxLength={20}
           placeholder="그룹 이름"
-          placeholderTextColor={color.textMuted}
-          style={inputStyle}
         />
         <Button label="그룹 만들기" tone="secondary" disabled={creating} onPress={create} />
       </View>
 
       <View style={{ gap: space.md }}>
         <T variant="section">초대코드로 참여</T>
-        <TextInput
+        <Field
           value={code}
           onChangeText={(next) => setCode(next.toUpperCase().slice(0, CODE_LENGTH))}
           placeholder="초대코드 6자리"
-          placeholderTextColor={color.textMuted}
           autoCapitalize="characters"
           maxLength={CODE_LENGTH}
-          style={[inputStyle, { letterSpacing: 4 }]}
+          style={{ letterSpacing: 4 }}
         />
         <Button label="참여" tone="primary" disabled={joining} onPress={join} />
       </View>

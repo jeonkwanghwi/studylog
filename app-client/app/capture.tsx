@@ -246,7 +246,7 @@ export default function Capture() {
                 left: space.base,
               }}
             >
-              <BackButton label="닫기" onDark />
+              <BackButton label="닫기" onPhoto />
             </View>
           )}
         </View>

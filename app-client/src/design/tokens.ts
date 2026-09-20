@@ -5,6 +5,9 @@ export const color = {
   text: "#191F28", // 본문
   textSub: "#4E5968", // 보조
   textMuted: "#8B95A1", // 3차
+  // 입력창 테두리. 편집 가능한 영역의 경계라 구조다.
+  // WCAG 1.4.11 의 3.0 기준을 넘는다(3.04).
+  border: "#8B95A1",
   accent: "#2B6CF6", // 단 하나의 강조색
   accentSoft: "#E8F0FE", // 강조색 배경
   // 확보한 날 칸. accentSoft 로는 대기 칸(fill)과 대비가 1.04 라 진행

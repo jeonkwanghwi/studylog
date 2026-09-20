@@ -5,7 +5,7 @@ import { View } from "react-native";
 import { haptic } from "./motion";
 import { T } from "./Text";
 import { Touchable } from "./Touchable";
-import { color, space } from "./tokens";
+import { color, radius, space } from "./tokens";
 
 /**
  * 화면 왼쪽 위 뒤로가기.
@@ -19,12 +19,15 @@ import { color, space } from "./tokens";
 export function BackButton({
   label = "뒤로",
   onDark = false,
+  onPhoto = false,
 }: {
   label?: string;
-  /** 카메라 같은 어두운 화면 위에서는 흰색으로 그린다. */
+  /** 어두운 화면(챌린지) 위에서는 흰색으로 그린다. */
   onDark?: boolean;
+  /** 사진 위에 놓일 때. 배경 밝기를 알 수 없으므로 면을 깐다. */
+  onPhoto?: boolean;
 }) {
-  const fg = onDark ? "#FFFFFF" : color.text;
+  const fg = onDark || onPhoto ? "#FFFFFF" : color.text;
   return (
     <Touchable
       accessibilityRole="button"
@@ -37,12 +40,24 @@ export function BackButton({
         alignSelf: "flex-start",
         minHeight: 44,
         justifyContent: "center",
-        paddingRight: space.base,
+        // 카메라 위에서는 배경이 사진이다 — 밝은 장면에서는 흰 글자가
+        // 그대로 사라진다. 어두운 반투명 면을 깔아서 어떤 사진 위에서도
+        // 읽히게 한다. 어두운 '화면'(챌린지) 위에서는 면이 필요 없다.
+        ...(onPhoto
+          ? {
+              backgroundColor: "rgba(0,0,0,0.45)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.4)",
+              borderRadius: radius.pill,
+              paddingLeft: space.sm,
+              paddingRight: space.base,
+            }
+          : { paddingRight: space.base }),
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: space.xs }}>
         <Ionicons name="chevron-back" size={22} color={fg} />
-        <T variant="section" style={onDark ? { color: fg } : undefined}>
+        <T variant="section" style={onDark || onPhoto ? { color: fg } : undefined}>
           {label}
         </T>
       </View>

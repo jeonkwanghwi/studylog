@@ -8,6 +8,7 @@ import type { JudgeResultOut } from "../../src/api/types";
 import { Appear } from "../../src/design/Appear";
 import { BackButton } from "../../src/design/BackButton";
 import { Button } from "../../src/design/Button";
+import { Field } from "../../src/design/Field";
 import { haptic } from "../../src/design/motion";
 import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
@@ -108,25 +109,14 @@ export default function Appeal() {
       <T variant="body" kind="sub">
         사진에서 무엇을 하고 있었는지 적어주세요. 이 설명을 참고해 한 번만 다시 판정합니다.
       </T>
-      <TextInput
+      <Field
         value={text}
         onChangeText={setText}
         editable={phase.name !== "sending"}
         multiline
         maxLength={300}
         placeholder="예: 무엇을 하고 있었는지 적어주세요 (태블릿 인강 등)"
-        placeholderTextColor={color.textMuted}
-        style={{
-          backgroundColor: color.fill,
-          borderRadius: radius.button,
-          padding: space.base,
-          minHeight: 120,
-          textAlignVertical: "top",
-          color: color.text,
-          fontFamily: type.body.fontFamily,
-          fontSize: type.body.fontSize,
-          letterSpacing: type.body.letterSpacing,
-        }}
+        style={{ minHeight: 120, textAlignVertical: "top" }}
       />
       <Button
         label="다시 판정 요청"

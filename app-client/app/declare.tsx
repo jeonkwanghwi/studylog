@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Platform, TextInput, View } from "react-native";
 
 import { BackButton } from "../src/design/BackButton";
 import { Button } from "../src/design/Button";
+import { Field } from "../src/design/Field";
 import { useScreenPadding } from "../src/design/safeArea";
 import { T } from "../src/design/Text";
 import { Touchable } from "../src/design/Touchable";
@@ -31,23 +32,13 @@ export default function Declare() {
         적은 내용과 사진이 맞는지로 인증합니다. 구체적으로 적을수록 정확해요.
       </T>
 
-      <TextInput
+      <Field
         value={activity}
         onChangeText={setActivity}
         maxLength={MAX}
         autoFocus
         returnKeyType="done"
         placeholder="예: 수학 문제집, 러닝머신 30분"
-        placeholderTextColor={color.textMuted}
-        style={{
-          backgroundColor: color.fill,
-          borderRadius: radius.button,
-          padding: space.base,
-          color: color.text,
-          fontFamily: type.body.fontFamily,
-          fontSize: type.body.fontSize,
-          letterSpacing: type.body.letterSpacing,
-        }}
       />
 
       <View style={{ flexDirection: "row", gap: space.sm }}>

@@ -1,27 +1,18 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, TextInput, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, View } from "react-native";
 
 import { useMe, useSetGoal, useSetNickname } from "../src/api/hooks";
 import { markOnboarded } from "../src/auth/storage";
 import { GOAL_MAX_MINUTES, GOAL_MIN_MINUTES } from "../src/config";
 import { Button } from "../src/design/Button";
+import { Field } from "../src/design/Field";
 import { T } from "../src/design/Text";
-import { color, radius, space, type } from "../src/design/tokens";
+import { space } from "../src/design/tokens";
 import { registerPushToken } from "../src/notifications/register";
 
 const NICKNAME_MAX = 32;
-
-const inputStyle = {
-  backgroundColor: color.fill,
-  borderRadius: radius.button,
-  padding: space.base,
-  color: color.text,
-  fontFamily: type.body.fontFamily,
-  fontSize: type.body.fontSize,
-  letterSpacing: type.body.letterSpacing,
-};
 
 export default function Onboarding() {
   const me = useMe();
@@ -78,14 +69,12 @@ export default function Onboarding() {
         <T variant="body" kind="sub">
           그룹 피드에서 친구들에게 보이는 이름이에요.
         </T>
-        <TextInput
+        <Field
           value={nickname}
           onChangeText={setNicknameText}
           maxLength={NICKNAME_MAX}
           autoFocus
           placeholder="이름 또는 별명"
-          placeholderTextColor={color.textMuted}
-          style={inputStyle}
         />
       </View>
 
@@ -95,11 +84,12 @@ export default function Onboarding() {
           매일 이만큼 공부하면 그날 몫을 돌려받아요. 나중에 설정에서 언제든 바꿀 수
           있어요.
         </T>
-        <TextInput
+        <Field
           value={minutes}
           onChangeText={setMinutes}
           keyboardType="number-pad"
-          style={inputStyle}
+          suffix="분"
+          big
         />
       </View>
 

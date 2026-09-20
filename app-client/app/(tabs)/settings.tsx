@@ -8,6 +8,7 @@ import { useAuth } from "../../src/auth/useAuth";
 import { GOAL_MAX_MINUTES, GOAL_MIN_MINUTES } from "../../src/config";
 import { Amount } from "../../src/design/Amount";
 import { Button } from "../../src/design/Button";
+import { Field } from "../../src/design/Field";
 import { useScreenPadding } from "../../src/design/safeArea";
 import { ScreenTitle } from "../../src/design/ScreenTitle";
 import { T } from "../../src/design/Text";
@@ -59,21 +60,24 @@ export default function Settings() {
     >
       <ScreenTitle title="설정" />
 
-      <View style={{ gap: space.sm }}>
-        <T variant="section">하루 목표 (분)</T>
-        <TextInput
+      <View style={{ gap: space.base }}>
+        {/* 이 숫자를 바꿀 수 있다는 것을 아무도 몰랐다. 칸에 경계를 주고,
+            화면을 대표하는 숫자니까 크게 보여준다. */}
+        <Field
+          label="하루 목표"
           value={minutes}
           onChangeText={setMinutes}
           keyboardType="number-pad"
-          style={{
-            backgroundColor: color.fill,
-            borderRadius: radius.button,
-            padding: space.base,
-            color: color.text,
-            fontFamily: type.body.fontFamily,
-            fontSize: type.body.fontSize,
-            letterSpacing: type.body.letterSpacing,
-          }}
+          suffix="분"
+          big
+          hint={
+            pending != null
+              ? // 서버가 목표 변경을 다음 04:00 정산 이후에만 반영한다. 밤에
+                // 목표를 낮춰 페이백을 타는 것을 막는 규칙이라, 화면이 이유를
+                // 말해줘야 유저가 이걸 버그로 신고하지 않는다.
+                `내일부터 ${pending}분이 적용됩니다. 오늘 목표는 그대로입니다.`
+              : undefined
+          }
         />
         <Button
           label="목표 저장"
@@ -81,19 +85,13 @@ export default function Settings() {
           loading={setGoal.isPending}
           onPress={save}
         />
-        {pending != null && (
-          // 서버가 목표 변경을 다음 04:00 정산 이후에만 반영한다. 밤에 목표를
-          // 낮춰 페이백을 타는 것을 막기 위한 규칙이라, 화면이 이유를 말해줘야
-          // 유저가 이걸 버그로 신고하지 않는다.
-          <T variant="caption" kind="muted">
-            내일부터 {pending}분이 적용됩니다. 오늘 목표는 그대로입니다.
-          </T>
-        )}
       </View>
 
       <View style={{ gap: space.sm }}>
-        <T variant="section">크레딧</T>
-        <Amount value={me.data?.credit_balance ?? 0} />
+        <T variant="caption" kind="muted">
+          크레딧
+        </T>
+        <Amount value={me.data?.credit_balance ?? 0} size="hero" />
         <T variant="caption" kind="muted">
           크레딧은 현금으로 환급되거나 다른 사람에게 양도될 수 없으며, 챌린지
           참가와 스트릭 복구에만 쓸 수 있습니다.
