@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { shrinkForUpload } from "./shrink";
 import type { JudgeResultOut } from "./types";
 
 export type ShotKind = "start" | "end";
@@ -37,9 +38,12 @@ export async function uploadPhoto(
     throw new Error("시작 샷에는 무엇을 할지 선언이 필요합니다.");
   }
 
+  // 줄여서 보낸다. 실패하면 원본 경로가 그대로 돌아오므로 업로드는 막히지 않는다.
+  const sending = await shrinkForUpload(uri);
+
   const form = new FormData();
   form.append("image", {
-    uri,
+    uri: sending,
     name: "shot.jpg",
     type: "image/jpeg",
   } as unknown as Blob);
