@@ -28,7 +28,7 @@ export function isoDateAtOffset(start: string, offset: number): string {
 type CellState = Mark | "today";
 
 const BG: Record<CellState, string> = {
-  secured: color.accentSecured,
+  secured: color.accentFill,
   missed: color.negativeSoft,
   pending: color.fill,
   today: color.accent,

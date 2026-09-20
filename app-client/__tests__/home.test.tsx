@@ -285,7 +285,7 @@ describe("홈", () => {
 
     await waitFor(() => expect(screen.getAllByTestId("day-cell")).toHaveLength(30));
     const cells = screen.getAllByTestId("day-cell");
-    expect(cells[0].props.style.backgroundColor).toBe(color.accentSecured); // 09-01 성공 → secured
+    expect(cells[0].props.style.backgroundColor).toBe(color.accentFill); // 09-01 성공 → secured
     expect(cells[1].props.style.backgroundColor).toBe(color.negativeSoft); // 09-02 실패 → missed
     expect(cells[2].props.style.backgroundColor).toBe(color.fill); // 09-03 기록 없음 → pending
   });

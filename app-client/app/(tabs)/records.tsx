@@ -3,6 +3,7 @@ import { RefreshControl, ScrollView, View } from "react-native";
 
 import { useMe, useRecords } from "../../src/api/hooks";
 import { Amount } from "../../src/design/Amount";
+import { Badge } from "../../src/design/Badge";
 import { Button } from "../../src/design/Button";
 import { Card } from "../../src/design/Card";
 import { LoadFailed } from "../../src/design/LoadFailed";
@@ -13,12 +14,17 @@ import { T } from "../../src/design/Text";
 import { color, space } from "../../src/design/tokens";
 import { RESTORE_COST, formatWon } from "../../src/money/format";
 import { canRestore, formatElapsed } from "../../src/time/elapsed";
+import { formatStudyDay } from "../../src/time/studyDay";
 import type { DailyRecordOut } from "../../src/api/types";
 
-const LABEL: Record<DailyRecordOut["result"], string> = {
-  success: "달성",
-  passed: "복구됨",
-  failed: "미달",
+// 피드와 같은 말·같은 모양을 쓴다. 전에는 여기만 '미달'이라 부르고 흐린
+// 글자로 그렸고 피드는 '미인증' 뱃지였다 — 같은 상태를 두 이름으로 부르면
+// 유저는 다른 일이 일어난 줄 안다.
+const RESULT: Record<DailyRecordOut["result"],
+                     { label: string; tone: "positive" | "negative" }> = {
+  success: { label: "달성", tone: "positive" },
+  passed: { label: "복구됨", tone: "positive" },
+  failed: { label: "미인증", tone: "negative" },
 };
 
 export default function Records() {
@@ -67,10 +73,8 @@ export default function Records() {
         return (
           <Card key={record.id} style={{ gap: space.sm }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <T variant="section">{record.date}</T>
-              <T variant="body" kind={record.result === "failed" ? "negative" : "sub"}>
-                {LABEL[record.result]}
-              </T>
+              <T variant="section">{formatStudyDay(record.date)}</T>
+              <Badge {...RESULT[record.result]} />
             </View>
 
             <View

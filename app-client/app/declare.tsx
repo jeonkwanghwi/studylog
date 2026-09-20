@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, View } from "react-native";
 
 import { BackButton } from "../src/design/BackButton";
 import { Button } from "../src/design/Button";
@@ -8,7 +8,7 @@ import { Field } from "../src/design/Field";
 import { useScreenPadding } from "../src/design/safeArea";
 import { T } from "../src/design/Text";
 import { Touchable } from "../src/design/Touchable";
-import { color, radius, space, type } from "../src/design/tokens";
+import { color, radius, space } from "../src/design/tokens";
 
 // 판정은 "공부 사진인가"가 아니라 "선언한 것과 사진이 맞는가"로 이뤄진다.
 // 그래서 카메라보다 이 화면이 먼저 온다 — 선언 없이는 판정 기준이 없다.

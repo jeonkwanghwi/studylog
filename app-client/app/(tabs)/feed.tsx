@@ -57,7 +57,7 @@ export default function Feed() {
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: space.xl, gap: space.base, ...screenPadding }}
+      contentContainerStyle={{ padding: space.lg, gap: space.base, ...screenPadding }}
       refreshControl={
         <RefreshControl
           refreshing={feed.isFetching}

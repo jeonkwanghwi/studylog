@@ -1,6 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import { useState } from "react";
-import { Alert, ScrollView, TextInput, View } from "react-native";
+import { Alert, ScrollView, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, api } from "../../src/api/client";
@@ -15,7 +15,7 @@ import { ScreenTitle } from "../../src/design/ScreenTitle";
 import { T } from "../../src/design/Text";
 import { Toast, useToast } from "../../src/design/Toast";
 import { Touchable } from "../../src/design/Touchable";
-import { color, radius, space, type } from "../../src/design/tokens";
+import { space } from "../../src/design/tokens";
 
 const CODE_LENGTH = 6;
 

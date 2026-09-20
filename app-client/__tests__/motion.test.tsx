@@ -169,8 +169,9 @@ describe("버튼 톤", () => {
     expect(contrast(color.accentFill, color.bg)).toBeGreaterThan(
       contrast(color.fill, color.bg)
     );
-    // 그 위의 글자는 읽혀야 한다.
-    expect(contrast(color.accent, color.accentFill)).toBeGreaterThanOrEqual(3.0);
+    // 그 위의 글자는 본문 기준으로 읽혀야 한다 — 라벨이 17px 볼드라
+    // WCAG 의 '큰 글자' 예외(18.66px 볼드)에 미치지 못한다.
+    expect(contrast(color.accentStrong, color.accentFill)).toBeGreaterThanOrEqual(4.5);
   });
 
   it("전부 상자로 만들지 않는다 — 그러면 위계가 사라진다", () => {
@@ -189,7 +190,8 @@ describe("버튼 톤", () => {
     await render(<Button label="이의제기" tone="text" onPress={() => {}} />);
     // 전에는 primary 가 아닐 때 color: undefined 를 명시적으로 넘겨서
     // kind 가 정한 색을 지워버렸다. 글자색이 통째로 날아갔다.
-    expect(labelStyle("이의제기").color).toBe("#2B6CF6");
+    // 강조 '글자'는 진한 쪽이다 — 밝은 accent 는 면 전용.
+    expect(labelStyle("이의제기").color).toBe(color.accentStrong);
   });
 
   it("행동 버튼과 해제 버튼은 다른 색을 쓴다", () => {
@@ -203,7 +205,7 @@ describe("버튼 톤", () => {
     // 전에는 둘 다 회색이라, 실제로 뭔가 하는 버튼과 그냥 닫는 버튼이
     // 똑같이 생겼다.
     await render(<Button label="닫기" tone="quiet" onPress={() => {}} />);
-    expect(labelStyle("닫기").color).toBe("#8B95A1");
+    expect(labelStyle("닫기").color).toBe(color.textMuted);
   });
 });
 

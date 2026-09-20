@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, TextInput, View } from "react-native";
+import { Alert, ScrollView, View } from "react-native";
 
 import { ApiError } from "../../src/api/client";
 import { useMe, useSetGoal } from "../../src/api/hooks";
@@ -13,7 +13,7 @@ import { useScreenPadding } from "../../src/design/safeArea";
 import { ScreenTitle } from "../../src/design/ScreenTitle";
 import { T } from "../../src/design/Text";
 import { Toast, useToast } from "../../src/design/Toast";
-import { color, radius, space, type } from "../../src/design/tokens";
+import { space } from "../../src/design/tokens";
 import { registerPushToken } from "../../src/notifications/register";
 
 export default function Settings() {

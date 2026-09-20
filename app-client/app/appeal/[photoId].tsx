@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
-import { BackHandler, KeyboardAvoidingView, Platform, TextInput } from "react-native";
+import { BackHandler, KeyboardAvoidingView, Platform } from "react-native";
 
 import { ApiError, api } from "../../src/api/client";
 import { useInvalidateAll } from "../../src/api/hooks";
@@ -12,7 +12,7 @@ import { Field } from "../../src/design/Field";
 import { haptic } from "../../src/design/motion";
 import { useScreenPadding } from "../../src/design/safeArea";
 import { T } from "../../src/design/Text";
-import { color, radius, space, type } from "../../src/design/tokens";
+import { space, type } from "../../src/design/tokens";
 
 type Phase =
   | { name: "writing" }

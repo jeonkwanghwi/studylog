@@ -89,7 +89,7 @@ describe("DayGrid", () => {
     const cells = screen.getAllByTestId("day-cell");
     const backgrounds = cells.map((cell) => cell.props.style.backgroundColor);
 
-    expect(backgrounds[0]).toBe(color.accentSecured);
+    expect(backgrounds[0]).toBe(color.accentFill);
     expect(backgrounds[1]).toBe("#FEECEE");
     expect(backgrounds[2]).toBe(color.fill);
     expect(backgrounds[3]).toBe(color.accent);
@@ -120,8 +120,8 @@ describe("DayGrid 가독성", () => {
       return (hi + 0.05) / (lo + 0.05);
     };
 
-    expect(contrast(color.accentSecured, color.fill)).toBeGreaterThan(1.15);
+    expect(contrast(color.accentFill, color.fill)).toBeGreaterThan(1.15);
     // 확보 칸 위의 글자는 AA 를 넘어야 한다.
-    expect(contrast(color.accentStrong, color.accentSecured)).toBeGreaterThan(4.5);
+    expect(contrast(color.accentStrong, color.accentFill)).toBeGreaterThan(4.5);
   });
 });
