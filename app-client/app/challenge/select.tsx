@@ -125,7 +125,7 @@ export default function Select() {
           시작한 뒤에는 취소할 수 없어요.
         </T>
         <Button
-          label="시작하기"
+          label="도전하기"
           tone="primary"
           loading={busy !== null}
           onPress={() => payWithCredit(creditConfirm)}
@@ -218,6 +218,11 @@ export default function Select() {
         </Card>
       )}
 
+      {/* 버튼은 '결제'라고 말하지 않는다 — 이 앱에서 하는 일은 도전이고,
+          돈은 그 도전을 진짜로 만드는 장치지 상품이 아니다. 대신 금액은
+          바로 위 줄에 그대로 둔다. 낱말을 부드럽게 하면서 가격까지 흐리면
+          그때부터는 속이는 것이 된다. 실제 청구는 애플 결제 시트가 한 번
+          더 확인받는다. */}
       {(products.data ?? []).map((product) => (
         <Card
           key={product.product_id}
@@ -236,7 +241,7 @@ export default function Select() {
           </T>
 
           <Button
-            label="결제하고 시작"
+            label="도전하기"
             tone="primary"
             onDark
             loading={busy === product.product_id}
@@ -246,7 +251,7 @@ export default function Select() {
 
           {balance >= product.price && (
             <Button
-              label="크레딧으로 참가"
+              label="크레딧으로 도전"
               tone="secondary"
               onDark
               disabled={busy !== null}

@@ -75,8 +75,8 @@ describe("처리 중 버튼", () => {
     // 결제 버튼이 흐려지기만 하면 안 눌린 건지 처리 중인지 알 수 없어
     // 유저가 한 번 더 누른다. 결제는 두 번 누르면 안 되는 동작이다.
     const onPress = jest.fn();
-    await render(<Button label="결제하고 시작" loading onPress={onPress} />);
-    expect(screen.queryByText("결제하고 시작")).toBeNull();
+    await render(<Button label="도전하기" loading onPress={onPress} />);
+    expect(screen.queryByText("도전하기")).toBeNull();
     await fireEvent.press(screen.getByRole("button"));
     expect(onPress).not.toHaveBeenCalled();
   });
@@ -220,8 +220,8 @@ describe("누름 반응의 결", () => {
 
   it("비활성은 투명도가 아니라 고유한 면으로 말한다", async () => {
     // 흐린 것과 "안 눌리는 것"은 다른 뜻이고, 흐린 라벨은 읽기도 어렵다.
-    await render(<Button label="결제하고 시작" disabled onPress={() => {}} />);
-    const label = screen.getByText("결제하고 시작");
+    await render(<Button label="도전하기" disabled onPress={() => {}} />);
+    const label = screen.getByText("도전하기");
     const flat = (() => {
       const out: Record<string, unknown> = {};
       const walk = (v: unknown) => {
@@ -262,8 +262,8 @@ describe("챌린지의 어두운 면", () => {
   });
 
   it("어두운 면 위 버튼이 밝은 면 색을 그대로 쓰지 않는다", async () => {
-    await render(<Button label="크레딧으로 참가" tone="secondary" onDark onPress={() => {}} />);
-    const style = screen.getByText("크레딧으로 참가").props.style;
+    await render(<Button label="크레딧으로 도전" tone="secondary" onDark onPress={() => {}} />);
+    const style = screen.getByText("크레딧으로 도전").props.style;
     const out: Record<string, unknown> = {};
     const walk = (v: unknown) => {
       if (Array.isArray(v)) v.forEach(walk);

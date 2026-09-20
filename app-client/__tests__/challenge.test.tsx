@@ -79,7 +79,7 @@ describe("챌린지 선택", () => {
   it("크레딧이 충분하면 크레딧 참가를 제안한다", async () => {
     mockApi();
     await wrap();
-    await waitFor(() => expect(screen.getAllByText("크레딧으로 참가").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText("크레딧으로 도전").length).toBeGreaterThan(0));
   });
 
   it("크레딧 참가는 확인을 한 번 받는다", async () => {
@@ -87,9 +87,9 @@ describe("챌린지 선택", () => {
     // 환급되지 않는 자산이 탭 한 번에 빠져나가면 안 된다.
     mockApi();
     await wrap();
-    await waitFor(() => expect(screen.getAllByText("크레딧으로 참가").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText("크레딧으로 도전").length).toBeGreaterThan(0));
 
-    await fireEvent.press(screen.getAllByText("크레딧으로 참가")[0]);
+    await fireEvent.press(screen.getAllByText("크레딧으로 도전")[0]);
 
     expect(screen.getByText(/크레딧 7,000원을 씁니다/)).toBeTruthy();
     const posted = (global.fetch as jest.Mock).mock.calls.filter(
@@ -101,12 +101,12 @@ describe("챌린지 선택", () => {
   it("크레딧 참가를 취소하면 아무것도 쓰지 않는다", async () => {
     mockApi();
     await wrap();
-    await waitFor(() => expect(screen.getAllByText("크레딧으로 참가").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText("크레딧으로 도전").length).toBeGreaterThan(0));
 
-    await fireEvent.press(screen.getAllByText("크레딧으로 참가")[0]);
+    await fireEvent.press(screen.getAllByText("크레딧으로 도전")[0]);
     await fireEvent.press(screen.getByText("취소"));
 
-    await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
+    await waitFor(() => expect(screen.getAllByText("도전하기").length).toBe(2));
     const posted = (global.fetch as jest.Mock).mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === "POST"
     );
@@ -124,16 +124,16 @@ describe("챌린지 선택", () => {
   it("크레딧이 모자라면 결제로만 참가한다", async () => {
     mockApi({ "/users/me": { ...me, credit_balance: 0 } });
     await wrap();
-    await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
-    expect(screen.queryByText("크레딧으로 참가")).toBeNull();
+    await waitFor(() => expect(screen.getAllByText("도전하기").length).toBe(2));
+    expect(screen.queryByText("크레딧으로 도전")).toBeNull();
   });
 
   it("결제는 RevenueCat 을 거치고 서버에 직접 알리지 않는다", async () => {
     mockApi();
     await wrap();
-    await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
+    await waitFor(() => expect(screen.getAllByText("도전하기").length).toBe(2));
 
-    await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+    await fireEvent.press(screen.getAllByText("도전하기")[0]);
     await waitFor(() => expect(mockBuyProduct).toHaveBeenCalledWith("challenge_7d_1k"));
 
     const posted = (global.fetch as jest.Mock).mock.calls.filter(
@@ -151,14 +151,14 @@ describe("챌린지 선택", () => {
       mockApi(overrides);
       mockBuyProduct.mockResolvedValue(undefined);
       await wrap();
-      await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
+      await waitFor(() => expect(screen.getAllByText("도전하기").length).toBe(2));
 
-      await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+      await fireEvent.press(screen.getAllByText("도전하기")[0]);
       await waitFor(() => expect(mockBuyProduct).toHaveBeenCalledTimes(1));
       await waitFor(() => expect(screen.getByText(/결제를 확인하는 중입니다/)).toBeTruthy());
 
       // 다시 눌러도 두 번째 결제는 나가지 않는다 — 버튼이 막혀 있다.
-      await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+      await fireEvent.press(screen.getAllByText("도전하기")[0]);
       expect(mockBuyProduct).toHaveBeenCalledTimes(1);
       expect(router.back).not.toHaveBeenCalled();
 
@@ -174,8 +174,8 @@ describe("챌린지 선택", () => {
       const setIntervalSpy = jest.spyOn(global, "setInterval");
 
       await wrap();
-      await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
-      await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+      await waitFor(() => expect(screen.getAllByText("도전하기").length).toBe(2));
+      await fireEvent.press(screen.getAllByText("도전하기")[0]);
       await waitFor(() => expect(screen.getByText(/결제를 확인하는 중입니다/)).toBeTruthy());
 
       expect(setIntervalSpy).toHaveBeenCalled();
@@ -206,8 +206,8 @@ describe("챌린지 선택", () => {
       jest.spyOn(Date, "now").mockImplementation(() => now);
 
       await wrap();
-      await waitFor(() => expect(screen.getAllByText("결제하고 시작").length).toBe(2));
-      await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+      await waitFor(() => expect(screen.getAllByText("도전하기").length).toBe(2));
+      await fireEvent.press(screen.getAllByText("도전하기")[0]);
       await waitFor(() => expect(screen.getByText(/결제를 확인하는 중입니다/)).toBeTruthy());
 
       const pollCall = setIntervalSpy.mock.calls.find((c) => c[1] === 2_000);
@@ -224,7 +224,7 @@ describe("챌린지 선택", () => {
       expect(screen.getByText("새로고침")).toBeTruthy();
 
       // 시간이 지나 버튼 문구가 바뀌어도 재구매는 여전히 막혀 있다.
-      await fireEvent.press(screen.getAllByText("결제하고 시작")[0]);
+      await fireEvent.press(screen.getAllByText("도전하기")[0]);
       expect(mockBuyProduct).toHaveBeenCalledTimes(1);
     });
   });
