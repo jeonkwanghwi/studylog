@@ -3,7 +3,7 @@ import { Animated, View } from "react-native";
 
 import { motion, useReducedMotion } from "./motion";
 import { T } from "./Text";
-import { space } from "./tokens";
+import { color, space } from "./tokens";
 
 type Size = "hero" | "amount";
 type Kind = "text" | "sub" | "muted" | "accent" | "negative";
@@ -50,22 +50,26 @@ export function Amount({
   size = "amount",
   kind = "text",
   roll = false,
+  onDark = false,
 }: {
   value: number;
   size?: Size;
   kind?: Kind;
+  /** 어두운 면 위. 챌린지 화면이 그렇다. */
+  onDark?: boolean;
   /** 값이 바뀔 때 숫자를 굴린다. 돈이 실제로 움직이는 자리에만 켠다. */
   roll?: boolean;
 }) {
   const shown = useRollingValue(value, roll);
   const sign = shown < 0 ? "-" : "";
+  const tone = onDark ? { color: color.inkText } : undefined;
   return (
     <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.xs }}>
-      <T variant={size} kind={kind}>
+      <T variant={size} kind={kind} style={tone}>
         {sign}
         {Math.abs(shown).toLocaleString("ko-KR")}
       </T>
-      <T variant={UNIT_VARIANT[size]} kind={kind}>
+      <T variant={UNIT_VARIANT[size]} kind={kind} style={tone}>
         원
       </T>
     </View>

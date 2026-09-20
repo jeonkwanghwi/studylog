@@ -26,6 +26,21 @@ export const TONE_SURFACE: Record<Tone, Record<string, unknown>> = {
   quiet: {},
 };
 
+/** 어두운 면 위. 밝은 면용 색을 그대로 쓰면 눈이 부시거나 안 읽힌다. */
+const TONE_SURFACE_DARK: Record<Tone, Record<string, unknown>> = {
+  primary: { backgroundColor: color.accent },   // 어두운 면에서 오히려 잘 뜬다
+  secondary: { backgroundColor: color.inkFill },
+  text: {},
+  quiet: {},
+};
+
+const TONE_LABEL_DARK: Record<Tone, string> = {
+  primary: color.inkText,
+  secondary: color.inkAccent,
+  text: color.inkAccent,
+  quiet: color.inkMuted,
+};
+
 /** 누르고 있는 동안. 크기만 변하면 "눌렀다"는 느낌이 약하다. */
 const TONE_PRESSED: Record<Tone, Record<string, unknown>> = {
   primary: { backgroundColor: color.accentPressed },
@@ -56,6 +71,7 @@ export function Button({
   disabled,
   loading = false,
   size = "normal",
+  onDark = false,
   ...rest
 }: Omit<PressableProps, "style" | "children"> & {
   label: string;
@@ -65,6 +81,8 @@ export function Button({
   loading?: boolean;
   /** 화면에 할 일이 이것뿐일 때 크게 만든다. */
   size?: "normal" | "large";
+  /** 어두운 면 위에 놓일 때. 챌린지 화면이 그렇다. */
+  onDark?: boolean;
 }) {
   const boxed = BOXED[tone];
   const blocked = disabled || loading;
@@ -75,8 +93,10 @@ export function Button({
       accessibilityState={{ disabled: !!blocked, busy: loading }}
       disabled={blocked}
       style={{
-        ...TONE_SURFACE[tone],
-        ...(blocked && boxed ? { backgroundColor: color.disabledFill } : {}),
+        ...(onDark ? TONE_SURFACE_DARK[tone] : TONE_SURFACE[tone]),
+        ...(blocked && boxed
+          ? { backgroundColor: onDark ? color.inkFill : color.disabledFill }
+          : {}),
         borderRadius: boxed ? radius.button : 0,
         // height 로 고정하면 시스템 글자 크기를 키운 사람에게 라벨이 잘린다.
         minHeight: boxed ? (size === "large" ? 72 : 56) : 44,
@@ -100,7 +120,15 @@ export function Button({
           // primary 가 아닐 때 color/fontFamily 를 undefined 로 넘기면 안 된다.
           // RN 은 나중 스타일이 이기므로 kind 가 정한 색이 지워진다.
           style={
-            blocked
+            onDark
+              ? {
+                  textAlign: "center",
+                  color: blocked ? color.inkMuted : TONE_LABEL_DARK[tone],
+                  fontFamily: tone === "primary" || tone === "secondary"
+                    ? fonts.BOLD
+                    : undefined,
+                }
+              : blocked
               ? { textAlign: "center" }
               : tone === "primary"
                 ? { textAlign: "center", color: "#FFFFFF", fontFamily: fonts.BOLD }

@@ -22,6 +22,17 @@ export const color = {
   accentPressed: "#2058CC", // primary 를 누른 동안. 눌렸다는 신호를 색으로도 준다
   accentFillPressed: "#BFD3FA",
   disabledFill: "#F2F4F6",  // 비활성은 투명도가 아니라 고유한 면으로 말한다
+
+  // 어두운 면. 챌린지 선택·결제 화면에만 쓴다 — "여기는 돈을 거는 곳"을
+  // 색을 하나 더 들이지 않고 말하기 위한 것이다. 새 계열이 아니라 본문
+  // 색(#191F28)을 면으로 뒤집어 쓴다.
+  ink: "#191F28",
+  inkFill: "#242B36",       // 어두운 면 위의 카드
+  // 어두운 면 위에서는 기존 강조색(#2B6CF6)이 대비 3.61 이라 본문으로
+  // 안 읽힌다. 밝은 쪽으로 옮긴 변형이 필요하다.
+  inkAccent: "#6BA1FF",     // 대비 6.44
+  inkText: "#FFFFFF",       // 대비 16.56
+  inkMuted: "#B0B8C1",      // 대비 8.26
 } as const;
 
 export const space = {

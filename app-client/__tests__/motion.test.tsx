@@ -233,3 +233,42 @@ describe("누름 반응의 결", () => {
     expect(flat.color).toBe(color.textMuted);
   });
 });
+
+describe("챌린지의 어두운 면", () => {
+  const contrast = (a: string, b: string) => {
+    const lum = (hex: string) => {
+      const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const lin = c.map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+    };
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  it("어두운 면 위의 글자가 읽힌다", () => {
+    // 밝은 면용 강조색(#2B6CF6)은 어두운 면에서 대비 3.61 이라 본문으로
+    // 안 읽힌다. 그래서 밝은 변형을 따로 둔다.
+    expect(contrast(color.accent, color.ink)).toBeLessThan(4.5);
+    expect(contrast(color.inkAccent, color.ink)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(color.inkText, color.ink)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(color.inkMuted, color.ink)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("어두운 면은 새 색 계열이 아니라 본문 색을 뒤집어 쓴다", () => {
+    // 두 번째 강조색을 만들면 파랑이 뜻하는 "되찾은 돈"이 흐려진다.
+    expect(color.ink).toBe(color.text);
+  });
+
+  it("어두운 면 위 버튼이 밝은 면 색을 그대로 쓰지 않는다", async () => {
+    await render(<Button label="크레딧으로 참가" tone="secondary" onDark onPress={() => {}} />);
+    const style = screen.getByText("크레딧으로 참가").props.style;
+    const out: Record<string, unknown> = {};
+    const walk = (v: unknown) => {
+      if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === "object")
+        for (const k of Object.keys(v)) out[k] = (v as Record<string, unknown>)[k];
+    };
+    walk(style);
+    expect(out.color).toBe(color.inkAccent);
+  });
+});

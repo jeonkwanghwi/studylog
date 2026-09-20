@@ -1,4 +1,5 @@
 import { router, useNavigation } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, BackHandler, ScrollView, View } from "react-native";
 
@@ -137,49 +138,79 @@ export default function Select() {
   // 결제를 확인하는 중이면 자리표시자로 덮으면 안 된다 — 방금 돈을 낸 사람이
   // 빈 화면을 보게 된다. 그 안내가 상품 목록보다 우선한다.
   if (products.isLoading && !confirming) {
-    return <ListSkeleton />;
+    // 밝은 스켈레톤은 어두운 면에서 눈이 부시다.
+    return (
+      <View style={{ flex: 1, justifyContent: "center", backgroundColor: color.ink }}>
+        <StatusBar style="light" />
+        <ActivityIndicator color={color.inkAccent} />
+      </View>
+    );
   }
 
   // 돈을 쓰러 들어온 화면이 조용히 비어 있으면 막다른 길이다.
   if (products.isError && !confirming) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg }}>
-        <T variant="title">상품을 불러오지 못했습니다</T>
-        <T variant="body" kind="sub">
+      <View
+        style={{
+          flex: 1, justifyContent: "center", padding: space.xl, gap: space.lg,
+          backgroundColor: color.ink,
+        }}
+      >
+        <StatusBar style="light" />
+        <T variant="title" style={{ color: color.inkText }}>
+          상품을 불러오지 못했습니다
+        </T>
+        <T variant="body" style={{ color: color.inkMuted }}>
           연결을 확인하고 다시 시도해주세요.
         </T>
-        <Button label="다시 시도" tone="primary" onPress={() => products.refetch()} />
-        <Button label="닫기" tone="quiet" onPress={() => router.back()} />
+        <Button label="다시 시도" tone="primary" onDark onPress={() => products.refetch()} />
+        <Button label="닫기" tone="quiet" onDark onPress={() => router.back()} />
       </View>
     );
   }
 
   return (
+    // 어두운 면은 "여기는 돈을 거는 곳"이라는 신호다. 색을 하나 더 들이지
+    // 않고 영역을 구분한다 — 파랑은 이미 "되찾은 돈"이라는 뜻을 지고 있어서
+    // 두 번째 강조색을 만들면 그 뜻이 흐려진다.
     <ScrollView
-      contentContainerStyle={{ padding: space.lg, gap: space.base, ...screenPadding }}
+      style={{ backgroundColor: color.ink }}
+      contentContainerStyle={{
+        padding: space.lg,
+        gap: space.base,
+        backgroundColor: color.ink,
+        minHeight: "100%",
+        ...screenPadding,
+      }}
     >
+      <StatusBar style="light" />
       {/* 결제 확인 중에는 나가면 안 된다 — 돌아와서 다시 사면 두 번째
           결제는 영수증만 남는다. */}
-      {!confirming && <BackButton />}
-      <T variant="body" kind="sub">
+      {!confirming && <BackButton onDark />}
+      <T variant="title" style={{ color: color.inkText }}>
+        얼마를 걸까요?
+      </T>
+      <T variant="body" style={{ color: color.inkMuted }}>
         참가비를 먼저 내고, 목표를 채운 날마다 하루치를 크레딧으로 돌려받습니다.
       </T>
 
       {confirming && (
-        <Card style={{ gap: space.sm }}>
+        <Card style={{ gap: space.sm, backgroundColor: color.inkFill }}>
           {timedOut ? (
             <>
-              <T variant="section">결제가 완료됐습니다</T>
-              <T variant="body" kind="sub">
+              <T variant="section" style={{ color: color.inkText }}>
+                결제가 완료됐습니다
+              </T>
+              <T variant="body" style={{ color: color.inkMuted }}>
                 챌린지가 열리기까지 시간이 조금 더 걸리고 있어요. 곧 나타납니다. 화면을
                 나가지 말고 새로고침해보세요.
               </T>
-              <Button label="새로고침" tone="secondary" onPress={() => challenge.refetch()} />
+              <Button label="새로고침" tone="secondary" onDark onPress={() => challenge.refetch()} />
             </>
           ) : (
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-              <ActivityIndicator color={color.accent} />
-              <T variant="body" kind="sub">
+              <ActivityIndicator color={color.inkAccent} />
+              <T variant="body" style={{ color: color.inkMuted }}>
                 결제를 확인하는 중입니다…
               </T>
             </View>
@@ -188,12 +219,17 @@ export default function Select() {
       )}
 
       {(products.data ?? []).map((product) => (
-        <Card key={product.product_id} elevation="raised" style={{ gap: space.md }}>
+        <Card
+          key={product.product_id}
+          style={{ gap: space.md, backgroundColor: color.inkFill }}
+        >
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
-            <T variant="section">{product.days}일</T>
-            <Amount value={product.price} size="amount" />
+            <T variant="section" style={{ color: color.inkText }}>
+              {product.days}일
+            </T>
+            <Amount value={product.price} size="amount" onDark />
           </View>
-          <T variant="caption" kind="muted">
+          <T variant="caption" style={{ color: color.inkMuted }}>
             하루 {formatWon(product.daily_payback)}씩 돌려받음
             {product.completion_bonus > 0 &&
               ` · 완주 시 ${formatWon(product.completion_bonus)} 추가`}
@@ -202,6 +238,7 @@ export default function Select() {
           <Button
             label="결제하고 시작"
             tone="primary"
+            onDark
             loading={busy === product.product_id}
             disabled={busy !== null}
             onPress={() => payWithStore(product)}
@@ -211,6 +248,7 @@ export default function Select() {
             <Button
               label="크레딧으로 참가"
               tone="secondary"
+              onDark
               disabled={busy !== null}
               onPress={() => setCreditConfirm(product)}
             />
