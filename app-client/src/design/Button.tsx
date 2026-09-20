@@ -26,6 +26,14 @@ export const TONE_SURFACE: Record<Tone, Record<string, unknown>> = {
   quiet: {},
 };
 
+/** 누르고 있는 동안. 크기만 변하면 "눌렀다"는 느낌이 약하다. */
+const TONE_PRESSED: Record<Tone, Record<string, unknown>> = {
+  primary: { backgroundColor: color.accentPressed },
+  secondary: { backgroundColor: color.accentFillPressed },
+  text: { opacity: 0.6 },
+  quiet: { opacity: 0.6 },
+};
+
 export const TONE_LABEL: Record<Tone, Kind> = {
   primary: "text",     // 아래에서 흰색으로 덮는다
   secondary: "accent",
@@ -68,6 +76,7 @@ export function Button({
       disabled={blocked}
       style={{
         ...TONE_SURFACE[tone],
+        ...(blocked && boxed ? { backgroundColor: color.disabledFill } : {}),
         borderRadius: boxed ? radius.button : 0,
         // height 로 고정하면 시스템 글자 크기를 키운 사람에게 라벨이 잘린다.
         minHeight: boxed ? (size === "large" ? 72 : 56) : 44,
@@ -76,24 +85,28 @@ export function Button({
         justifyContent: "center",
         paddingHorizontal: boxed ? space.base : space.sm,
         paddingVertical: space.sm,
-        opacity: disabled && !loading ? 0.4 : 1,
       }}
+      // 비활성은 투명도로 흐리게 만들지 않는다 — 흐린 것과 "안 눌리는 것"은
+      // 다른 뜻이고, 흐린 라벨은 읽기도 어렵다. 고유한 면과 글자색으로 말한다.
+      pressedStyle={blocked ? undefined : (TONE_PRESSED[tone] as never)}
       {...rest}
     >
       {loading ? (
         <ActivityIndicator color={tone === "primary" ? "#FFFFFF" : color.accent} />
       ) : (
         <T
-          variant={size === "large" ? "title" : "section"}
-          kind={labelKind}
+          variant={size === "large" ? "title" : "button"}
+          kind={blocked ? "muted" : labelKind}
           // primary 가 아닐 때 color/fontFamily 를 undefined 로 넘기면 안 된다.
           // RN 은 나중 스타일이 이기므로 kind 가 정한 색이 지워진다.
           style={
-            tone === "primary"
-              ? { textAlign: "center", color: "#FFFFFF", fontFamily: fonts.BOLD }
-              : tone === "secondary"
-                ? { textAlign: "center", fontFamily: fonts.BOLD }
-                : { textAlign: "center" }
+            blocked
+              ? { textAlign: "center" }
+              : tone === "primary"
+                ? { textAlign: "center", color: "#FFFFFF", fontFamily: fonts.BOLD }
+                : tone === "secondary"
+                  ? { textAlign: "center", fontFamily: fonts.BOLD }
+                  : { textAlign: "center" }
           }
         >
           {label}

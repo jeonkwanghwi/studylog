@@ -17,8 +17,10 @@ export const motion = {
   enter: { duration: 260, easing: Easing.bezier(0.2, 0, 0, 1) },
   /** 숫자가 올라가는 시간 */
   count: { duration: 700 },
-  /** 눌렀을 때 줄어드는 정도. 더 줄이면 버튼이 눌리는 게 아니라 도망가 보인다. */
-  pressScale: 0.97,
+  /** 눌렀을 때 줄어드는 정도. 0.95 아래로 내려가면 과장돼 보인다. */
+  pressScale: 0.96,
+  /** 누름 상태의 색 전환. 고빈도 상호작용이라 150ms 를 넘기면 굼떠 보인다. */
+  pressFade: { duration: 120 },
 } as const;
 
 /**

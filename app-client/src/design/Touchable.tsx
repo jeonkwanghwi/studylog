@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Animated, Pressable, type PressableProps, type ViewStyle } from "react-native";
 
 import { haptic, usePressScale } from "./motion";
@@ -8,6 +8,8 @@ type Props = Omit<PressableProps, "style" | "children"> & {
   children?: ReactNode;
   /** 화면을 바꾸지 않는 가벼운 토글에는 꺼도 된다. */
   feedback?: boolean;
+  /** 누르고 있는 동안 덧씌울 스타일. 색으로도 눌렸다고 말하기 위한 것이다. */
+  pressedStyle?: ViewStyle;
 };
 
 /**
@@ -21,26 +23,33 @@ export function Touchable({
   children,
   feedback = true,
   disabled,
+  pressedStyle,
   onPressIn,
   onPressOut,
   ...rest
 }: Props) {
   const press = usePressScale();
+  const [pressed, setPressed] = useState(false);
   return (
     <Pressable
       disabled={disabled}
       onPressIn={(e) => {
         press.onPressIn();
+        setPressed(true);
         if (feedback) haptic.tap();
         onPressIn?.(e);
       }}
       onPressOut={(e) => {
         press.onPressOut();
+        setPressed(false);
         onPressOut?.(e);
       }}
       {...rest}
     >
-      <Animated.View style={[style, { transform: [{ scale: press.scale }] }]}>
+      <Animated.View
+        style={[style, pressed ? pressedStyle : null,
+                { transform: [{ scale: press.scale }] }]}
+      >
         {children}
       </Animated.View>
     </Pressable>

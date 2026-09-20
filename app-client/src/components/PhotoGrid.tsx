@@ -28,6 +28,11 @@ export function PhotoGrid({ photos }: { photos: FeedPhotoOut[] }) {
             aspectRatio: 1,
             borderRadius: radius.chip,
             backgroundColor: color.fill,
+            // 밝은 사진이 흰 배경과 만나면 가장자리가 사라진다.
+            // 아주 옅은 검정 한 줄이면 어떤 사진에서도 형태가 유지된다.
+            // 회색 계열 색을 쓰면 사진 색조에 따라 튄다 — 순수 검정 투명이어야 한다.
+            borderWidth: 1,
+            borderColor: "rgba(0,0,0,0.08)",
           }}
         />
       ))}

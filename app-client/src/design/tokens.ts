@@ -19,6 +19,9 @@ export const color = {
   // 누를 수 있다는 신호를 같이 준다. 회색 테두리를 두르는 것보다
   // 정돈돼 보인다 — 테두리는 위계를 만들지 못하고 전부 같은 무게로 만든다.
   accentFill: "#D2E0FC",    // 배경 대비 1.33 / 위의 강조색 글자 대비 3.45
+  accentPressed: "#2058CC", // primary 를 누른 동안. 눌렸다는 신호를 색으로도 준다
+  accentFillPressed: "#BFD3FA",
+  disabledFill: "#F2F4F6",  // 비활성은 투명도가 아니라 고유한 면으로 말한다
 } as const;
 
 export const space = {
@@ -49,6 +52,8 @@ export const type = {
   section: { fontFamily: MEDIUM, fontSize: 16, lineHeight: 24, letterSpacing: -0.2 },
   body: { fontFamily: REGULAR, fontSize: 15, lineHeight: 23, letterSpacing: -0.1 },
   amount: { fontFamily: BOLD, fontSize: 17, lineHeight: 24, letterSpacing: -0.2 },
+  // 버튼 라벨. 16px 은 56pt 버튼 안에서 작아 보인다.
+  button: { fontFamily: MEDIUM, fontSize: 17, lineHeight: 24, letterSpacing: -0.3 },
   caption: { fontFamily: REGULAR, fontSize: 13, lineHeight: 19, letterSpacing: -0.1 },
 } as const;
 

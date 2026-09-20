@@ -206,3 +206,30 @@ describe("버튼 톤", () => {
     expect(labelStyle("닫기").color).toBe("#8B95A1");
   });
 });
+
+describe("누름 반응의 결", () => {
+  it("크기만이 아니라 색도 바뀐다", async () => {
+    // 크기만 변하면 "눌렀다"는 느낌이 약하다. 고빈도 상호작용이라
+    // 색 전환은 150ms 이내여야 굼떠 보이지 않는다.
+    const { motion } = require("../src/design/motion");
+    expect(motion.pressFade.duration).toBeLessThanOrEqual(150);
+    expect(motion.pressScale).toBe(0.96);   // 0.95 아래는 과장돼 보인다
+  });
+
+  it("비활성은 투명도가 아니라 고유한 면으로 말한다", async () => {
+    // 흐린 것과 "안 눌리는 것"은 다른 뜻이고, 흐린 라벨은 읽기도 어렵다.
+    await render(<Button label="결제하고 시작" disabled onPress={() => {}} />);
+    const label = screen.getByText("결제하고 시작");
+    const flat = (() => {
+      const out: Record<string, unknown> = {};
+      const walk = (v: unknown) => {
+        if (Array.isArray(v)) v.forEach(walk);
+        else if (v && typeof v === "object")
+          for (const k of Object.keys(v)) out[k] = (v as Record<string, unknown>)[k];
+      };
+      walk(label.props.style);
+      return out;
+    })();
+    expect(flat.color).toBe(color.textMuted);
+  });
+});
