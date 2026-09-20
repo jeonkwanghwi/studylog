@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.deletion import delete_account
 from app.models import User
 from app.schemas import GoalIn, NicknameIn, PushTokenIn, UserOut
 from app.security import get_current_user
+from app.storage import PhotoStorage, get_storage
 
 router = APIRouter(prefix="/users/me", tags=["users"])
 
@@ -62,4 +64,23 @@ def set_push_token(
 ) -> Response:
     user.expo_push_token = body.token
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
+def delete_me(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    storage: PhotoStorage = Depends(get_storage),
+) -> Response:
+    """회원 탈퇴. 이 버튼 말고는 계정이 사라지는 길이 없다.
+
+    대상은 **토큰이 가리키는 사람 하나뿐**이다. 경로에도 본문에도 누구를
+    지울지 적는 자리가 없으므로, 남의 계정을 지우는 요청을 만들 수 없다.
+
+    되돌릴 수 없다는 안내와 확인은 앱이 맡는다. 서버까지 온 요청은 이미
+    확인을 거친 것으로 본다 — 서버가 한 번 더 묻는 왕복을 두면, 그
+    '확인 완료' 신호 자체가 우회로가 된다.
+    """
+    delete_account(db, user, storage)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

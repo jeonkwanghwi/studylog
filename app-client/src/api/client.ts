@@ -118,4 +118,6 @@ export const api = {
     request<T>(path, { method: "PUT" }, body),
   postForm: async <T>(path: string, form: FormData) =>
     sendForm<T>(path, form, await getToken()),
+  // 204 는 본문이 없다. request 가 빈 본문을 {} 로 바꿔주므로 그대로 쓴다.
+  del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };

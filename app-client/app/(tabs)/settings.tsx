@@ -134,6 +134,21 @@ export default function Settings() {
           router.replace("/login");
         }}
       />
+
+      {/* 로그아웃과 붙여두면 잘못 누른다. 둘은 결과가 전혀 다르다 —
+          하나는 다시 로그인하면 그만이고 하나는 되돌릴 수 없다.
+          간격을 벌리고, 무엇이 사라지는지는 다음 화면에서 말한다. */}
+      <View style={{ gap: space.xs, marginTop: space.xl }}>
+        <Button
+          label="회원 탈퇴"
+          tone="text"
+          kind="muted"
+          onPress={() => router.push("/account/delete")}
+        />
+        <T variant="caption" kind="muted">
+          계정과 모든 기록이 지워집니다. 남은 크레딧은 소멸하며 되돌릴 수 없습니다.
+        </T>
+      </View>
     </ScrollView>
     <Toast message={toast.message} onHide={toast.hide} />
     </>

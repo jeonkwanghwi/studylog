@@ -74,6 +74,8 @@ class PhotoStorage(Protocol):
 
     def url(self, key: str) -> str: ...
 
+    def delete(self, key: str) -> None: ...
+
 
 class S3Storage:
     def __init__(self, bucket: str, region: str) -> None:
@@ -95,6 +97,11 @@ class S3Storage:
             ExpiresIn=settings.photo_url_expire_seconds,
         )
 
+    def delete(self, key: str) -> None:
+        # S3 의 delete_object 는 없는 키에도 성공한다. 지우다 만 상태에서
+        # 다시 돌려도 안전하다는 뜻이라 따로 존재 확인을 하지 않는다.
+        self._client.delete_object(Bucket=self.bucket, Key=key)
+
 
 @dataclass
 class MemoryStorage:
@@ -109,6 +116,9 @@ class MemoryStorage:
 
     def url(self, key: str) -> str:
         return f"memory://{key}"
+
+    def delete(self, key: str) -> None:
+        self.items.pop(key, None)
 
 
 def get_storage() -> PhotoStorage:

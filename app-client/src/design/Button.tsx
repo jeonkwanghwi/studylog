@@ -11,19 +11,25 @@ import { color, fonts, radius, space } from "./tokens";
  *   secondary  할 수 있는 다른 일. 강조색의 옅은 면 + 강조색 글자.
  *   text       덜 중요한 행동(이의제기, 약관). 강조색 글자만.
  *   quiet      그냥 나가기(닫기, 취소). 흐린 글자만.
+ *   danger     되돌릴 수 없는 것(회원 탈퇴). 채워진 빨강.
+ *
+ * danger 를 따로 둔 이유: primary 에 kind="negative" 를 주는 방법도 있지만
+ * primary 는 면이 파란색이고 라벨을 흰색으로 강제한다 — 탈퇴 버튼이 파랗게
+ * 나온다. 색이 곧 경고인 자리라 면부터 달라야 한다.
  *
  * secondary 가 중립 회색이 아니라 강조색 계열인 이유: 회색 채움(#F2F4F6)은
  * 흰 배경 대비 1.10 이라 버튼이 없는 것처럼 보였다. 회색 테두리를 두르는
  * 방법도 있지만 그러면 화면이 와이어프레임처럼 되고, 무엇보다 모든 버튼이
  * 같은 무게가 되어 위계가 사라진다.
  */
-type Tone = "primary" | "secondary" | "text" | "quiet";
+type Tone = "primary" | "secondary" | "text" | "quiet" | "danger";
 
 export const TONE_SURFACE: Record<Tone, Record<string, unknown>> = {
   primary: { backgroundColor: color.accent },
   secondary: { backgroundColor: color.accentFill },
   text: {},
   quiet: {},
+  danger: { backgroundColor: color.negative },
 };
 
 /** 어두운 면 위. 밝은 면용 색을 그대로 쓰면 눈이 부시거나 안 읽힌다. */
@@ -32,6 +38,7 @@ const TONE_SURFACE_DARK: Record<Tone, Record<string, unknown>> = {
   secondary: { backgroundColor: color.inkFill },
   text: {},
   quiet: {},
+  danger: { backgroundColor: color.negative },
 };
 
 const TONE_LABEL_DARK: Record<Tone, string> = {
@@ -39,6 +46,7 @@ const TONE_LABEL_DARK: Record<Tone, string> = {
   secondary: color.inkAccent,
   text: color.inkAccent,
   quiet: color.inkMuted,
+  danger: color.inkText,
 };
 
 /** 누르고 있는 동안. 크기만 변하면 "눌렀다"는 느낌이 약하다. */
@@ -47,6 +55,7 @@ const TONE_PRESSED: Record<Tone, Record<string, unknown>> = {
   secondary: { backgroundColor: color.accentFillPressed },
   text: { opacity: 0.6 },
   quiet: { opacity: 0.6 },
+  danger: { backgroundColor: color.negativePressed },
 };
 
 export const TONE_LABEL: Record<Tone, Kind> = {
@@ -54,6 +63,7 @@ export const TONE_LABEL: Record<Tone, Kind> = {
   secondary: "accent",
   text: "accent",
   quiet: "muted",
+  danger: "text",    // 아래에서 흰색으로 덮는다
 };
 
 /** 면을 가진 것만 상자다. */
@@ -62,6 +72,7 @@ const BOXED: Record<Tone, boolean> = {
   secondary: true,
   text: false,
   quiet: false,
+  danger: true,
 };
 
 export function Button({
@@ -112,7 +123,9 @@ export function Button({
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator color={tone === "primary" ? "#FFFFFF" : color.accent} />
+        <ActivityIndicator
+          color={tone === "primary" || tone === "danger" ? "#FFFFFF" : color.accent}
+        />
       ) : (
         <T
           variant={size === "large" ? "title" : "button"}
@@ -125,12 +138,13 @@ export function Button({
                   textAlign: "center",
                   color: blocked ? color.inkMuted : TONE_LABEL_DARK[tone],
                   fontFamily: tone === "primary" || tone === "secondary"
+                    || tone === "danger"
                     ? fonts.BOLD
                     : undefined,
                 }
               : blocked
               ? { textAlign: "center" }
-              : tone === "primary"
+              : tone === "primary" || tone === "danger"
                 ? { textAlign: "center", color: "#FFFFFF", fontFamily: fonts.BOLD }
                 : tone === "secondary"
                   ? { textAlign: "center", fontFamily: fonts.BOLD }

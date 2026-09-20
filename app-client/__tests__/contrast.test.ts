@@ -31,6 +31,8 @@ const TEXT_PAIRS: [string, string, string][] = [
   ["secondary 버튼 라벨", color.accentStrong, color.accentFill],
   ["피드 그룹 칩(선택됨)", color.accentStrong, color.accentSoft],
   ["primary 버튼 라벨", color.bg, color.accent],
+  ["danger 버튼 라벨", color.bg, color.negative],
+  ["danger 버튼 라벨(누름)", color.bg, color.negativePressed],
   ["뱃지 positive", color.accentStrong, color.accentSoft],
   ["뱃지 negative", color.negative, color.negativeSoft],
   ["달력 확보한 날", color.accentStrong, color.accentFill],
