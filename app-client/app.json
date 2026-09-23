@@ -10,6 +10,7 @@
       "supportsTablet": true,
       "usesAppleSignIn": true,
       "bundleIdentifier": "com.kwanghwi.studylog",
+      "appleTeamId": "M9N2HYP83K",
       "infoPlist": {
         "NSCameraUsageDescription": "공부 인증 사진을 찍습니다.",
         "NSAppTransportSecurity": {
