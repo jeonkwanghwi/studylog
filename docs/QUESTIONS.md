@@ -332,3 +332,20 @@ EXIF 촬영시각은 축소 과정에서 사라진다. 지금은 잃는 게 없�
 - [ ] 사용자 및 액세스 — 전광휘(nimo6289@gmail.com) 팀에서 제거
 
 기기 UDID 는 새 팀에 그대로 등록하면 되므로 QR 절차를 다시 거칠 필요가 없다.
+
+
+---
+
+## HTTPS 완료 — 도메인 studylog.co.kr (2026-09-25)
+
+`https://api.studylog.co.kr` 로 API 가 뜬다. 로그인 토큰과 인증 사진이 더
+이상 평문으로 다니지 않는다. 자세한 내용은 `server/deploy/aws-resources.md`.
+
+곁다리로 **앱스토어가 요구하는 URL 두 개의 자리도 생겼다** — 개인정보처리방침
+URL 과 지원 URL. 지금은 "준비 중입니다" 한 줄짜리 정적 페이지라, 앱 안에만
+있는 약관 내용을 웹으로도 띄워야 한다.
+
+→ 남은 것:
+   - `https://studylog.co.kr/privacy`, `/terms`, `/support` 페이지 만들기
+     (`src/legal/content.ts` 의 내용을 그대로 쓰면 된다)
+   - 문의처 이메일 — 약관의 마지막 `[입력 필요]` 하나. 전용 Gmail 권장

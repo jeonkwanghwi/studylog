@@ -14,12 +14,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "공부 인증 사진을 찍습니다.",
         "NSAppTransportSecurity": {
-          "NSExceptionDomains": {
-            "54.116.69.38": {
-              "NSExceptionAllowsInsecureHTTPLoads": true,
-              "NSIncludesSubdomains": false
-            }
-          },
+          "NSAllowsArbitraryLoads": false,
           "NSAllowsLocalNetworking": true
         },
         "ITSAppUsesNonExemptEncryption": false
@@ -36,8 +31,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false,
-      "usesCleartextTraffic": true
+      "predictiveBackGestureEnabled": false
     },
     "scheme": "studylog",
     "plugins": [
