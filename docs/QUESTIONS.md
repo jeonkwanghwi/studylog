@@ -345,7 +345,7 @@ EXIF 촬영시각은 축소 과정에서 사라진다. 지금은 잃는 게 없�
 URL 과 지원 URL. 지금은 "준비 중입니다" 한 줄짜리 정적 페이지라, 앱 안에만
 있는 약관 내용을 웹으로도 띄워야 한다.
 
-→ 남은 것:
-   - `https://studylog.co.kr/privacy`, `/terms`, `/support` 페이지 만들기
-     (`src/legal/content.ts` 의 내용을 그대로 쓰면 된다)
-   - 문의처 이메일 — 약관의 마지막 `[입력 필요]` 하나. 전용 Gmail 권장
+→ ~~페이지 만들기~~ 완료. `/privacy`, `/terms`, `/support` 가 뜬다.
+→ **문의처 이메일 — 약관의 마지막 `[입력 필요]`. 이것만 남았다.**
+   `src/legal/content.ts` 의 `CONTACT` 상수 한 줄이다. 채우고
+   `npm run build:legal && server/deploy/publish-web.sh` 하면 끝.
